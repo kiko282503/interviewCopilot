@@ -1,0 +1,1505 @@
+MASTER PROJECT PROMPT
+
+PROJECT NAME: INTERVIEW COPILOT AI
+
+An Advanced AI-Powered Windows Desktop Interview, Coding, and Technical Assessment Assistant
+
+---
+
+1. YOUR ROLE
+
+Act as a complete senior software development team consisting of:
+
+- Principal Software Architect
+- Senior Windows Desktop Application Developer
+- Senior Electron Developer
+- Senior React and TypeScript Developer
+- Senior Node.js Backend Developer
+- Senior AI/LLM Engineer
+- Gemini API Specialist
+- Computer Vision Engineer
+- Speech Recognition Engineer
+- QA Automation Architect
+- Cybersecurity Engineer
+- Database Architect
+- UI/UX Designer
+- DevOps Engineer
+- Technical Project Manager
+
+Your responsibility is to architect, develop, test, and deliver a fully functional AI-powered Windows desktop application.
+
+Do not create a simple demonstration, static prototype, or nonfunctional UI.
+
+Build an actual application with working backend services, real Gemini API integration, real-time audio processing, multimodal screenshot understanding, coding assistance, persistent storage, and Windows desktop integration.
+
+The application must be designed for Windows 11 and eventually packaged into a standalone Windows installer.
+
+Use Google AI Studio to develop the application, but ensure the generated source code can be exported, developed, tested, and maintained independently in VS Code.
+
+---
+
+2. PRODUCT VISION
+
+Build a sophisticated AI Interview Copilot inspired by the functionality of Final Round AI.
+
+The application should help users:
+
+1. Understand interview questions in real time.
+2. Transcribe interview conversations.
+3. Identify interviewer questions.
+4. Generate personalized suggested answers.
+5. Answer technical and behavioral interview questions.
+6. Solve programming and coding challenges.
+7. Analyze screenshots containing questions, code, errors, diagrams, and technical assessments.
+8. Debug programming problems.
+9. Generate and explain automation scripts.
+10. Analyze SQL and database questions.
+11. Maintain conversation context throughout an interview.
+12. Prepare for upcoming interviews.
+13. Practice technical and behavioral interviews.
+14. Evaluate interview answers and identify areas for improvement.
+
+The application must operate transparently and respect applicable meeting consent, recording, and platform policies. It must not implement stealth recording, monitoring evasion, hidden screen capture, or bypasses of meeting security controls.
+
+The AI must prioritize factual accuracy, technical correctness, natural language, low latency, and relevance to the user's professional background.
+
+---
+
+3. TECHNOLOGY STACK
+
+Use the following technologies.
+
+Desktop application
+
+- Electron
+- Electron Builder
+- React
+- TypeScript
+- HTML5
+- CSS3
+- Tailwind CSS
+
+Backend
+
+- Node.js
+- TypeScript
+- Express or an appropriate Electron backend architecture
+
+AI
+
+- Google Gemini API
+- Gemini Live API where appropriate
+- Gemini multimodal capabilities
+- Gemini structured output
+- Gemini function calling where useful
+
+Audio
+
+- Windows-compatible audio capture APIs
+- Web Audio API where appropriate
+- Streaming speech recognition
+- Gemini Live audio capabilities where appropriate
+
+Database
+
+- SQLite
+- Drizzle ORM or another suitable database abstraction
+
+Code editor
+
+- Monaco Editor
+
+State management
+
+- Zustand
+
+Validation
+
+- Zod
+
+Testing
+
+- Vitest
+- Playwright
+- Electron application testing tools
+
+Packaging
+
+- Electron Builder
+- Windows NSIS installer
+
+Use stable, mutually compatible versions.
+
+Do not assume that a particular Gemini model supports every API capability. Check the actual model capabilities and implement appropriate fallbacks.
+
+---
+
+4. APPLICATION ARCHITECTURE
+
+Design a modular application with the following components.
+
+A. Desktop presentation layer
+B. React user interface
+C. Electron main process
+D. Secure IPC communication
+E. AI orchestration service
+F. Gemini integration service
+G. Audio capture and transcription service
+H. Screenshot processing service
+I. Coding assistance service
+J. Resume intelligence service
+K. Conversation context manager
+L. Database service
+M. Code execution sandbox
+N. Logging and diagnostics service
+
+Maintain a clear separation of responsibilities.
+
+Never expose Gemini API keys or other secrets to the renderer process.
+
+Use Electron context isolation, sandboxing where compatible, strict Content Security Policy, and validated IPC channels.
+
+---
+
+5. MAIN APPLICATION NAVIGATION
+
+Create a professional dashboard with these sections:
+
+1. Dashboard
+2. Live Interview
+3. Coding Assistant
+4. Screenshot Analyzer
+5. Interview Practice
+6. Resume Intelligence
+7. Question and Answer Library
+8. Interview History
+9. Code Workspace
+10. AI Configuration
+11. Application Settings
+
+Every navigation item must lead to a working feature.
+
+Do not create decorative buttons without functionality.
+
+---
+
+6. DASHBOARD
+
+Create a premium dashboard displaying:
+
+- Welcome section.
+- Recent interview sessions.
+- Number of interviews.
+- Number of analyzed questions.
+- Coding challenges completed.
+- Resume profile status.
+- Gemini API connection status.
+- Audio input status.
+- Recent activity.
+- Quick actions.
+
+Quick actions:
+
+- Start Live Interview
+- Analyze Screenshot
+- Open Coding Assistant
+- Practice Interview
+- Upload Resume
+- Ask AI a Question
+
+Display meaningful loading, empty, success, and error states.
+
+---
+
+7. RESUME INTELLIGENCE ENGINE
+
+Create a comprehensive professional profile management system.
+
+Supported file formats
+
+- PDF
+- DOCX
+- TXT
+
+Allow multiple resumes and supporting documents.
+
+Extract:
+
+- Full professional summary.
+- Years of experience.
+- Employment history.
+- Job titles.
+- Responsibilities.
+- Technical skills.
+- Programming languages.
+- Testing frameworks.
+- Automation tools.
+- Databases.
+- Development tools.
+- Certifications.
+- Education.
+- Projects.
+- Achievements.
+
+Allow users to review, edit, and approve extracted information.
+
+Create a searchable knowledge base based on uploaded documents.
+
+Use relevant profile information when generating interview answers.
+
+Never invent qualifications, certifications, employment history, technical skills, or project achievements.
+
+When information is unavailable, tell the user that the profile does not contain enough information.
+
+Allow the user to maintain multiple professional profiles for different job positions.
+
+---
+
+8. INITIAL PROFESSIONAL PROFILE
+
+Prepopulate the application with the following editable professional background.
+
+Professional positioning:
+
+Senior QA Automation Engineer / QA Lead.
+
+Experience:
+
+- 14+ years of QA experience.
+- 11+ years of automation testing experience.
+- Manual and automation testing.
+- Web application testing.
+- QA leadership and mentoring.
+
+Technologies:
+
+- Selenium WebDriver.
+- Java.
+- Cucumber.
+- Maven.
+- Playwright.
+- TypeScript.
+- JavaScript.
+- TestNG.
+- HP QTP/UFT.
+- HP ALM.
+- Jenkins.
+- MySQL.
+- SQL.
+- Jira.
+- YouTrack.
+- Agile methodology.
+
+Testing experience:
+
+- Functional testing.
+- Regression testing.
+- Integration testing.
+- End-to-end testing.
+- UI automation.
+- Database validation.
+- Defect management.
+- Test planning.
+- Test execution.
+- Automation framework development.
+- Test maintenance.
+- CI/CD integration.
+- QA reporting.
+- Junior QA mentoring.
+
+The system must use these details as initial profile information, not as permission to invent additional experience.
+
+Allow the user to upload an updated resume to refine or replace the initial profile.
+
+Prioritize QA Automation Engineer and Senior QA Automation Engineer positioning when generating professional interview responses.
+
+---
+
+9. LIVE INTERVIEW ASSISTANT
+
+Build a real-time interview assistance environment.
+
+Audio input
+
+Support:
+
+- Microphone selection.
+- Authorized system audio input.
+- Supported Windows audio capture devices.
+- Explicit start and stop controls.
+
+Where Windows loopback audio is available, allow users to select it with appropriate permissions and clear disclosure.
+
+Provide an audio device selection screen.
+
+Display:
+
+- Selected audio device.
+- Input volume.
+- Audio connection status.
+- Transcription status.
+- Gemini connection status.
+
+Live transcription
+
+Implement low-latency streaming transcription.
+
+Features:
+
+- Display recognized speech.
+- Distinguish interviewer and user speech when technically possible.
+- Identify questions.
+- Detect pauses and question completion.
+- Preserve conversational context.
+- Handle transcription errors.
+- Allow transcript correction.
+- Display timestamps.
+
+Do not silently record or transmit audio.
+
+Question detection
+
+Automatically identify:
+
+- Direct questions.
+- Follow-up questions.
+- Technical questions.
+- Behavioral questions.
+- Coding questions.
+- Scenario-based questions.
+- Salary questions.
+- Questions about previous projects.
+- Questions about technical experience.
+
+Avoid generating answers for every sentence.
+
+Prioritize actual questions and meaningful interviewer requests.
+
+Answer generation
+
+When a relevant question is identified:
+
+1. Understand the question.
+2. Determine its category.
+3. Retrieve relevant profile information.
+4. Review conversation context.
+5. Generate an appropriate answer.
+6. Check factual consistency.
+7. Display the suggested response.
+
+Provide three response lengths:
+
+- Short: 15–30 seconds.
+- Standard: 30–60 seconds.
+- Detailed: 60–120 seconds.
+
+Responses should sound natural and conversational.
+
+Avoid unnecessarily complicated sentences.
+
+Avoid excessive technical jargon.
+
+Use STAR for behavioral questions when appropriate.
+
+Allow the user to regenerate or edit suggestions.
+
+---
+
+10. AI INTERVIEW ANSWER ENGINE
+
+Support the following interview categories.
+
+General interview questions
+
+- Tell me about yourself.
+- Describe your professional experience.
+- Why are you interested in this position?
+- Why did you leave your previous company?
+- What are your strengths?
+- What are your weaknesses?
+- What are your salary expectations?
+- What are your career goals?
+
+QA technical questions
+
+- What is software testing?
+- Difference between verification and validation.
+- Difference between smoke and sanity testing.
+- Difference between regression and retesting.
+- Test case design.
+- Test strategy.
+- Defect lifecycle.
+- Severity versus priority.
+- Agile testing.
+- Test planning.
+- Risk-based testing.
+- Test coverage.
+
+Automation questions
+
+- Selenium architecture.
+- Playwright architecture.
+- Page Object Model.
+- TestNG.
+- Cucumber.
+- Maven.
+- Jenkins.
+- CI/CD.
+- Parallel execution.
+- Browser automation.
+- Wait strategies.
+- Flaky tests.
+- Framework architecture.
+- Test data management.
+- Automation maintenance.
+- Cross-browser testing.
+
+Programming questions
+
+- Java fundamentals.
+- OOP concepts.
+- Collections.
+- Exception handling.
+- JavaScript fundamentals.
+- TypeScript.
+- Async and await.
+- Promises.
+- Classes and interfaces.
+- Data structures.
+- Algorithms.
+
+Database questions
+
+- SELECT.
+- INSERT.
+- UPDATE.
+- DELETE.
+- JOIN.
+- GROUP BY.
+- HAVING.
+- Subqueries.
+- Aggregate functions.
+- Indexes.
+- Database validation.
+- Duplicate records.
+- Data consistency.
+
+API testing
+
+- HTTP methods.
+- Status codes.
+- REST.
+- JSON.
+- Authentication.
+- Authorization.
+- Postman.
+- API automation.
+- Request and response validation.
+- Integration testing.
+
+Behavioral and leadership questions
+
+- Handling difficult developers.
+- Managing defects.
+- Prioritizing testing.
+- Handling tight deadlines.
+- Leading QA teams.
+- Mentoring junior testers.
+- Improving testing processes.
+- Managing production defects.
+- Communicating release risks.
+
+---
+
+11. AI CODING INTERVIEW ASSISTANT
+
+Build a dedicated coding problem-solving engine.
+
+This is a core feature.
+
+Supported programming languages
+
+- Java
+- JavaScript
+- TypeScript
+- Python
+- C#
+- C++
+- SQL
+- HTML
+- CSS
+- Bash
+
+Supported problem categories
+
+- Data structures.
+- Algorithms.
+- Arrays.
+- Strings.
+- Linked lists.
+- Stacks.
+- Queues.
+- Hash maps.
+- Trees.
+- Sorting.
+- Searching.
+- Recursion.
+- Dynamic programming.
+- Object-oriented programming.
+- SQL queries.
+- API automation.
+- Selenium.
+- Playwright.
+- Debugging.
+- Test automation architecture.
+
+Problem-solving workflow
+
+When the user submits a coding question:
+
+1. Parse the question.
+2. Identify the expected outcome.
+3. Identify input and output.
+4. Identify constraints.
+5. Identify edge cases.
+6. Determine the best algorithm.
+7. Select a suitable data structure.
+8. Generate a solution.
+9. Explain the implementation.
+10. Calculate time complexity.
+11. Calculate space complexity.
+12. Generate test cases.
+13. Identify possible improvements.
+
+Required response format
+
+Every coding answer should contain:
+
+A. Problem understanding.
+
+B. Proposed approach.
+
+C. Complete code.
+
+D. Step-by-step explanation.
+
+E. Time complexity.
+
+F. Space complexity.
+
+G. Test cases.
+
+H. Edge cases.
+
+I. Alternative approaches where relevant.
+
+Coding response modes
+
+- Quick answer.
+- Detailed explanation.
+- Interview explanation.
+- Optimized solution.
+- Beginner-friendly explanation.
+- Debugging mode.
+
+QA automation coding specialization
+
+Prioritize practical QA automation questions.
+
+Examples:
+
+- Write a Selenium Java script.
+- Write a Playwright TypeScript test.
+- Create a Page Object Model.
+- Create a reusable test utility.
+- Automate login functionality.
+- Handle dynamic elements.
+- Implement explicit waits.
+- Handle dropdowns.
+- Handle alerts.
+- Handle multiple browser tabs.
+- Implement API testing.
+- Validate database records.
+- Create data-driven tests.
+- Implement Cucumber steps.
+- Debug flaky tests.
+- Create a Jenkins pipeline.
+- Design an automation framework.
+
+The AI must distinguish actual user experience from theoretical knowledge.
+
+---
+
+12. SCREENSHOT INTELLIGENCE AND ANALYZER
+
+Build a multimodal screenshot understanding system using Gemini vision capabilities.
+
+Reference:
+https://ai.google.dev/gemini-api/docs/image-understanding
+
+This must be a first-class application feature.
+
+Screenshot input methods
+
+Support:
+
+1. Upload PNG.
+2. Upload JPEG.
+3. Paste clipboard images.
+4. Drag and drop.
+5. Manually capture a selected screen region.
+6. Analyze multiple screenshots.
+7. Crop selected image regions.
+
+Screen capture must be explicitly user-initiated and visibly indicated.
+
+Do not implement covert or continuous hidden screen capture.
+
+Screenshot recognition
+
+The AI must recognize and interpret:
+
+- Programming questions.
+- Code snippets.
+- Compiler errors.
+- IDE screenshots.
+- Terminal output.
+- Stack traces.
+- SQL exercises.
+- Database diagrams.
+- UML diagrams.
+- Flowcharts.
+- Multiple-choice questions.
+- Technical assessments.
+- API requests.
+- API responses.
+- Web application screenshots.
+- Bug reports.
+- Test cases.
+- Error messages.
+- System architecture diagrams.
+
+Multimodal analysis
+
+Do not depend exclusively on OCR.
+
+Use Gemini image understanding to analyze:
+
+- Text.
+- Layout.
+- Visual relationships.
+- Diagrams.
+- Tables.
+- Code formatting.
+- UI components.
+- Relationships between multiple visual elements.
+
+Use OCR as a supporting technique.
+
+Screenshot analysis workflow
+
+1. Receive the screenshot.
+2. Validate the image.
+3. Check resolution.
+4. Allow cropping and resizing.
+5. Submit the image to Gemini.
+6. Extract the question.
+7. Identify the question category.
+8. Interpret the visual information.
+9. Generate a solution.
+10. Display the result.
+
+If text is unreadable, explicitly report the uncertainty.
+
+Never invent content that cannot be seen.
+
+Screenshot response format
+
+Display:
+
+- Original screenshot.
+- Extracted question.
+- Question category.
+- Identified programming language.
+- Suggested solution.
+- Explanation.
+- Relevant test cases.
+- Confidence and uncertainty indicators.
+
+Allow the user to ask follow-up questions about the same screenshot.
+
+Multiple screenshot context
+
+When several screenshots are submitted, treat them as a single related assessment when appropriate.
+
+Identify:
+
+- Shared instructions.
+- Related questions.
+- Continuation of code.
+- Common diagrams.
+- Question dependencies.
+
+Maintain the relationship between screenshots throughout the analysis session.
+
+---
+
+13. SCREENSHOT CODING SOLVER
+
+Build a specialized workflow for coding questions contained in screenshots.
+
+Example workflow:
+
+User uploads an image containing:
+
+"Write a Java method to identify duplicate values in an integer array."
+
+The application should:
+
+1. Recognize the question.
+2. Extract the exact wording.
+3. Identify Java as the requested language.
+4. Explain the problem.
+5. Generate Java code.
+6. Explain the solution.
+7. Calculate complexity.
+8. Generate test cases.
+9. Identify edge cases.
+
+If the programming language is unspecified, use the surrounding context or ask the user to select a language.
+
+Provide an editable code solution.
+
+---
+
+14. CODE WORKSPACE
+
+Integrate Monaco Editor.
+
+Features:
+
+- Syntax highlighting.
+- Language selection.
+- Code editing.
+- Code formatting.
+- Copy code.
+- Find and replace.
+- Multiple code tabs.
+- Test case management.
+- Error display.
+- Code comparison.
+- Code explanation.
+- Optimized code suggestions.
+
+Allow users to move generated solutions into the editor.
+
+Code execution
+
+Implement safe code execution using a separate restricted execution service.
+
+Requirements:
+
+- Process isolation.
+- Execution time limits.
+- Memory limits.
+- Restricted filesystem access.
+- No unrestricted network access.
+- No access to Gemini credentials.
+- Controlled temporary directories.
+- Process termination.
+- Execution logs.
+
+Never execute generated code directly inside the privileged Electron process.
+
+Gemini's Python code execution capability must not be treated as a universal execution environment for all languages.
+
+For Java, JavaScript, TypeScript, and C#, use appropriate local execution tools or isolated runners.
+
+---
+
+15. SQL AND DATABASE ASSISTANT
+
+Build a dedicated SQL assistant.
+
+Capabilities:
+
+- Generate SQL queries.
+- Explain SQL queries.
+- Identify incorrect syntax.
+- Optimize queries.
+- Explain joins.
+- Analyze database schemas.
+- Generate sample datasets.
+- Identify duplicate records.
+- Validate database relationships.
+- Explain indexing.
+- Generate database test cases.
+
+Support:
+
+- MySQL.
+- PostgreSQL.
+- SQL Server.
+- SQLite.
+
+Allow the user to provide database schema information.
+
+Never connect to a database without explicit configuration and permission.
+
+---
+
+16. LIVE CODING QUESTION DETECTION
+
+Extend the audio transcription engine.
+
+Detect coding-related questions such as:
+
+- Write a Java program to reverse a string.
+- How would you automate this using Playwright?
+- Explain HashMap and HashSet.
+- Write an SQL query to find duplicates.
+- How do you handle synchronization in Selenium?
+- Implement a function to identify repeated elements.
+
+When a coding question is identified:
+
+1. Categorize the problem.
+2. Determine the requested language.
+3. Retrieve relevant context.
+4. Generate a solution.
+5. Explain the approach.
+6. Display the answer in the coding workspace.
+
+If the question is ambiguous, display the ambiguity rather than silently assuming requirements.
+
+---
+
+17. FLOATING WINDOWS INTERFACE
+
+Create a modern, compact floating desktop panel.
+
+Requirements:
+
+- Resizable.
+- Draggable.
+- Always-on-top option.
+- Minimize and restore.
+- Adjustable size.
+- Dark and light themes.
+- Adjustable font size.
+- Copy response.
+- Regenerate response.
+- Show answer history.
+- Pin/unpin.
+- Separate interview and coding modes.
+
+The interface must be practical alongside Teams, Google Meet, and other desktop applications.
+
+Support normal window management and accessibility.
+
+Do not attempt to conceal the application from meeting participants, monitoring tools, or operating-system security mechanisms.
+
+Floating panel sections
+
+A. Interview question.
+
+B. Suggested answer.
+
+C. Technical explanation.
+
+D. Coding solution.
+
+E. Screenshot analysis.
+
+F. Follow-up suggestions.
+
+G. Conversation history.
+
+---
+
+18. AI ORCHESTRATION ENGINE
+
+Create one central AI orchestration layer.
+
+Its responsibilities:
+
+- Receive user questions.
+- Receive transcribed questions.
+- Receive screenshots.
+- Retrieve profile context.
+- Retrieve interview context.
+- Select the correct AI workflow.
+- Call Gemini.
+- Validate the response.
+- Format the response.
+- Return structured results.
+
+Use different specialized prompt templates for:
+
+- Behavioral questions.
+- QA questions.
+- Coding questions.
+- SQL questions.
+- Screenshot analysis.
+- Debugging.
+- Technical explanations.
+
+Implement structured JSON responses where appropriate.
+
+Create fallback behavior for:
+
+- Gemini API errors.
+- Rate limits.
+- Network failures.
+- Unsupported model capabilities.
+- Invalid responses.
+- Audio interruptions.
+
+Do not make the entire application dependent on one monolithic AI prompt.
+
+---
+
+19. CONVERSATION MEMORY
+
+Maintain session-specific conversation context.
+
+Remember:
+
+- Interviewer questions.
+- Previous responses.
+- Discussed technologies.
+- Project details.
+- Follow-up questions.
+- Current discussion topic.
+- Screenshots.
+- Coding challenges.
+- User corrections.
+
+Avoid repeating answers.
+
+When an interviewer refers to a previous answer, use the previous context.
+
+Allow the user to clear the current session.
+
+Separate persistent professional profile information from temporary interview context.
+
+---
+
+20. INTERVIEW PRACTICE MODE
+
+Create an interview simulator.
+
+Allow users to configure:
+
+- Job title.
+- Job description.
+- Company.
+- Interview difficulty.
+- Technical or behavioral interview.
+- Interview duration.
+- Selected technologies.
+
+Generate realistic questions based on the job description.
+
+Support:
+
+- Text answers.
+- Voice answers.
+- Coding questions.
+- SQL challenges.
+- Scenario-based questions.
+
+Evaluate responses based on:
+
+- Accuracy.
+- Relevance.
+- Technical knowledge.
+- Communication.
+- Completeness.
+- Confidence.
+- Clarity.
+
+Generate feedback and recommended improvements.
+
+Maintain progress tracking.
+
+---
+
+21. QUESTION AND ANSWER LIBRARY
+
+Create a searchable knowledge base.
+
+Allow users to:
+
+- Save questions.
+- Save answers.
+- Edit answers.
+- Add personal notes.
+- Categorize questions.
+- Search by technology.
+- Mark difficult questions.
+- Create custom question collections.
+
+Include initial QA Automation interview questions.
+
+---
+
+22. INTERVIEW HISTORY
+
+Save user-authorized sessions.
+
+Include:
+
+- Date.
+- Job position.
+- Interview type.
+- Questions.
+- Generated answers.
+- User-edited responses.
+- Screenshots.
+- Coding solutions.
+- Notes.
+- Evaluation results.
+
+Provide search, filters, and deletion.
+
+Allow exporting interview notes to Markdown or PDF.
+
+---
+
+23. AI MODEL CONFIGURATION
+
+Create an AI settings page.
+
+Allow configuration of:
+
+- Gemini API key.
+- Preferred Gemini model.
+- Response length.
+- Response style.
+- Creativity level.
+- Language.
+- AI response timeout.
+- Context management settings.
+
+Check model availability and supported features before enabling them.
+
+Never hardcode model identifiers throughout the application.
+
+Centralize model configuration.
+
+Allow model changes without modifying the entire codebase.
+
+---
+
+24. PRIVACY AND SECURITY
+
+Implement:
+
+- Secure API key storage.
+- OS-backed credential storage where available.
+- Electron context isolation.
+- Strict IPC validation.
+- Content Security Policy.
+- Secure file handling.
+- Explicit audio permissions.
+- Visible recording indicators.
+- User-controlled screenshot capture.
+- User-controlled transcript storage.
+- Local database encryption where appropriate.
+- Session deletion.
+- Secure logging.
+- Input validation.
+
+Never log secrets or sensitive API credentials.
+
+Do not transmit files or screenshots without explicit user action or a clearly disclosed enabled workflow.
+
+---
+
+25. DATABASE DESIGN
+
+Create normalized SQLite tables.
+
+Suggested tables:
+
+- users
+- professional_profiles
+- resumes
+- professional_experience
+- technical_skills
+- projects
+- interview_sessions
+- interview_questions
+- interview_answers
+- conversation_messages
+- screenshots
+- screenshot_analyses
+- coding_challenges
+- code_solutions
+- code_test_cases
+- saved_questions
+- user_preferences
+- ai_configurations
+- audit_logs
+
+Define appropriate foreign keys, indexes, relationships, and migration scripts.
+
+---
+
+26. UI/UX DESIGN
+
+Create a premium modern desktop interface.
+
+Design references:
+
+- Final Round AI.
+- Linear.
+- Raycast.
+- Notion.
+- Modern AI coding applications.
+
+Design requirements:
+
+- Dark-first theme.
+- Professional typography.
+- Clean layouts.
+- Minimal distractions.
+- Consistent spacing.
+- Responsive panels.
+- Clear status indicators.
+- Smooth but restrained transitions.
+- Accessible controls.
+- Good contrast.
+
+Avoid unnecessarily large dashboard cards.
+
+Prioritize information density in the floating panel.
+
+The application should feel like a professional developer productivity tool.
+
+---
+
+27. ERROR HANDLING AND PERFORMANCE
+
+Implement:
+
+- Global error handling.
+- API retry logic.
+- Request cancellation.
+- Timeout handling.
+- Audio reconnect logic.
+- Gemini rate-limit handling.
+- Database error handling.
+- Image processing validation.
+- Memory management.
+- Logging.
+- Performance monitoring.
+
+Prioritize low latency for live question detection and response generation.
+
+Display a loading indicator while an answer is being generated.
+
+Do not block the entire application while AI requests are running.
+
+---
+
+28. DEVELOPMENT PHASES
+
+Build the application incrementally.
+
+Do not attempt to generate the entire application in one response.
+
+Maintain the existing codebase between phases.
+
+PHASE 1: PROJECT FOUNDATION
+
+- Project structure.
+- Electron configuration.
+- React application.
+- TypeScript configuration.
+- Navigation.
+- Dashboard.
+- UI component library.
+- Theme system.
+- Secure IPC foundation.
+
+Acceptance criteria:
+
+Application launches successfully and all navigation works.
+
+PHASE 2: DATABASE AND USER PROFILE
+
+- SQLite.
+- Database migrations.
+- Resume upload.
+- Resume parsing.
+- Professional profile.
+- User preferences.
+- Knowledge base.
+
+Acceptance criteria:
+
+Uploaded documents can be processed, reviewed, edited, and persisted.
+
+PHASE 3: GEMINI INTEGRATION
+
+- API configuration.
+- Model management.
+- AI orchestration.
+- Prompt templates.
+- Structured responses.
+- Error handling.
+
+Acceptance criteria:
+
+The user can submit real questions and receive actual Gemini-generated answers.
+
+PHASE 4: INTERVIEW ANSWER ENGINE
+
+- Question categorization.
+- Profile retrieval.
+- Context management.
+- Answer generation.
+- Answer regeneration.
+- Response length controls.
+
+Acceptance criteria:
+
+Answers reflect the user's actual professional profile and maintain conversation context.
+
+PHASE 5: CODING ASSISTANT
+
+- Coding question parser.
+- Programming language selection.
+- Code generation.
+- Explanation.
+- Complexity analysis.
+- Test generation.
+- Debugging.
+- Code editor.
+
+Acceptance criteria:
+
+Users can submit real coding questions and receive structured, editable solutions.
+
+PHASE 6: SCREENSHOT ANALYZER
+
+- Image upload.
+- Clipboard support.
+- Screenshot capture.
+- Cropping.
+- Gemini vision.
+- OCR support.
+- Screenshot question extraction.
+- Code analysis.
+- Multiple screenshot context.
+
+Acceptance criteria:
+
+The system can analyze actual screenshots and provide meaningful answers based on their contents.
+
+PHASE 7: LIVE AUDIO
+
+- Device enumeration.
+- Microphone capture.
+- Authorized system audio capture.
+- Streaming transcription.
+- Question detection.
+- Speaker identification where supported.
+- Context preservation.
+- AI answer generation.
+
+Acceptance criteria:
+
+The system can transcribe a live test conversation and identify questions with acceptable latency.
+
+PHASE 8: FLOATING DESKTOP INTERFACE
+
+- Floating panel.
+- Window positioning.
+- Always-on-top.
+- Window resizing.
+- Interview mode.
+- Coding mode.
+- Screenshot analysis.
+
+Acceptance criteria:
+
+The floating interface operates correctly alongside other Windows applications.
+
+PHASE 9: PRACTICE AND HISTORY
+
+- Interview simulator.
+- Job description analysis.
+- Performance evaluation.
+- Question library.
+- Session history.
+- Export.
+
+Acceptance criteria:
+
+Users can complete practice sessions and retrieve their saved results.
+
+PHASE 10: SECURITY AND QUALITY ASSURANCE
+
+Perform:
+
+- Unit testing.
+- Integration testing.
+- End-to-end testing.
+- API testing.
+- Database testing.
+- UI testing.
+- Electron security testing.
+- Audio testing.
+- Screenshot analysis testing.
+- Performance testing.
+
+Fix all critical and high-priority defects.
+
+PHASE 11: WINDOWS DISTRIBUTION
+
+- Configure Electron Builder.
+- Generate Windows installer.
+- Configure application icon.
+- Configure installation directory.
+- Configure app permissions.
+- Configure application updates if implemented.
+- Document installation and setup.
+
+Final deliverables:
+
+- Complete source code.
+- Windows installer.
+- Environment configuration example.
+- Database migrations.
+- Test suite.
+- Technical documentation.
+- User guide.
+
+---
+
+29. DEVELOPMENT RULES
+
+These requirements are mandatory.
+
+1. Build actual functionality, not mockups.
+2. Do not create nonfunctional buttons.
+3. Do not hardcode fake AI responses.
+4. Do not expose API keys.
+5. Do not use fake transcription data.
+6. Do not simulate screenshot analysis.
+7. Do not claim an integration works without testing it.
+8. Do not remove previously working functionality.
+9. Do not rewrite the entire application unnecessarily.
+10. Keep components modular and reusable.
+11. Maintain TypeScript type safety.
+12. Use proper error handling.
+13. Maintain database migrations.
+14. Write automated tests.
+15. Document environment variables.
+16. Validate dependencies.
+17. Ensure Windows 11 compatibility.
+18. Provide clear setup instructions.
+
+If a feature cannot be completed because of a technical limitation, document the limitation and implement the best supported alternative.
+
+Do not silently substitute mock functionality for an unavailable integration.
+
+---
+
+30. DEVELOPMENT WORKFLOW
+
+Before writing code:
+
+1. Analyze the requirements.
+2. Design the architecture.
+3. Define the project folder structure.
+4. Identify dependencies.
+5. Identify technical risks.
+6. Define interfaces between modules.
+7. Establish development milestones.
+
+For each phase:
+
+1. Explain what will be implemented.
+2. Create or modify the required files.
+3. Implement the feature.
+4. Run the application.
+5. Run tests.
+6. Fix compilation errors.
+7. Fix runtime errors.
+8. Verify integration.
+9. Update documentation.
+10. Report completed functionality.
+
+Maintain a DEVELOPMENT_STATUS.md file containing:
+
+- Completed phases.
+- In-progress phases.
+- Remaining tasks.
+- Known bugs.
+- Technical limitations.
+- Test results.
+- Next development steps.
+
+Maintain a PROJECT_ARCHITECTURE.md file documenting the system architecture.
+
+Maintain a CHANGELOG.md file documenting significant changes.
+
+Do not overwrite working files without understanding their existing purpose.
+
+If context or generation limits prevent completing a phase, save the current progress and provide the exact next prompt required to continue.
+
+---
+
+31. FINAL ACCEPTANCE CRITERIA
+
+The project is considered complete only when:
+
+1. It launches as a Windows desktop application.
+2. Gemini integration works.
+3. Resume parsing works.
+4. Personalized answer generation works.
+5. Live transcription works with supported audio inputs.
+6. Interview question detection works.
+7. Coding question solving works.
+8. Java and TypeScript solutions can be generated.
+9. SQL question solving works.
+10. Screenshot upload works.
+11. Clipboard image input works.
+12. Screenshot analysis uses actual Gemini multimodal processing.
+13. The code editor works.
+14. Code execution is safely isolated where implemented.
+15. Interview context is maintained.
+16. The floating panel works.
+17. Interview practice works.
+18. Session history works.
+19. Database persistence works.
+20. Critical security tests pass.
+21. The Windows installer can be generated and installed.
+22. Documentation is complete.
+
+---
+
+32. START DEVELOPMENT
+
+Begin by:
+
+1. Analyzing the complete specification.
+2. Presenting the proposed architecture.
+3. Presenting the complete folder structure.
+4. Identifying required dependencies.
+5. Identifying Gemini model and API requirements.
+6. Identifying Windows-specific integration requirements.
+7. Creating the initial project.
+8. Implementing Phase 1.
+
+Do not stop after presenting a plan.
+
+Start writing the actual application code.
+
+Build a production-oriented, modular, maintainable Windows desktop AI Interview Copilot.
+
+The goal is a real application, not a visual concept.

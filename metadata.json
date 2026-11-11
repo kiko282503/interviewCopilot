@@ -1,0 +1,10 @@
+{
+  "name": "Interview Copilot AI",
+  "description": "Advanced AI-powered Windows desktop interview, coding, and technical assessment assistant with real-time transcription, multimodal screenshot analysis, and code workspace.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

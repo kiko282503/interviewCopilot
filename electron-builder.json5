@@ -1,0 +1,35 @@
+{
+  appId: "com.interviewcopilot.ai",
+  productName: "Interview Copilot AI",
+  copyright: "Copyright © 2026 Interview Copilot Team",
+  directories: {
+    output: "release",
+    buildResources: "public"
+  },
+  files: [
+    "dist/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  win: {
+    target: [
+      {
+        target: "nsis",
+        arch: ["x64", "arm64"]
+      },
+      {
+        target: "portable",
+        arch: ["x64"]
+      }
+    ],
+    requestedExecutionLevel: "asInvoker"
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    shortcutName: "Interview Copilot AI"
+  }
+}
