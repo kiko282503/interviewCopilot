@@ -19,39 +19,63 @@ interface DesktopLauncherModalProps {
 
 export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOpen, onClose }) => {
   const [downloaded, setDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
 
   if (!isOpen) return null;
 
-  const downloadUrl = '/InterviewCopilot-Stealth.bat';
-  const downloadPs1Url = '/InterviewCopilot-Stealth.ps1';
-  const oneLineLaunchCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${typeof window !== 'undefined' ? window.location.origin : ''}/InterviewCopilot-Stealth.ps1 | iex"`;
-  const [copiedLaunchCmd, setCopiedLaunchCmd] = useState(false);
-
   const handleDownload = () => {
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = 'InterviewCopilot-Stealth.bat';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setDownloaded(true);
+    try {
+      setDownloading(true);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = '/InterviewCopilot-Stealth.bat';
+      a.download = 'InterviewCopilot-Stealth.bat';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 500);
+      setDownloaded(true);
+    } catch (err) {
+      console.error('Download error:', err);
+    } finally {
+      setTimeout(() => setDownloading(false), 1000);
+    }
   };
 
   const handleDownloadPs1 = () => {
-    const a = document.createElement('a');
-    a.href = downloadPs1Url;
-    a.download = 'InterviewCopilot-Stealth.ps1';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setDownloaded(true);
+    try {
+      setDownloading(true);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = '/InterviewCopilot-Stealth.ps1';
+      a.download = 'InterviewCopilot-Stealth.ps1';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 500);
+      setDownloaded(true);
+    } catch (err) {
+      console.error('Download error:', err);
+    } finally {
+      setTimeout(() => setDownloading(false), 1000);
+    }
   };
 
-  const handleCopyLaunchCmd = () => {
-    navigator.clipboard.writeText(oneLineLaunchCmd);
-    setCopiedLaunchCmd(true);
-    setTimeout(() => setCopiedLaunchCmd(false), 2000);
+  const handleCopyFullScript = async () => {
+    try {
+      const res = await fetch('/InterviewCopilot-Stealth.bat');
+      if (!res.ok) throw new Error('Fetch failed');
+      const text = await res.text();
+      await navigator.clipboard.writeText(text);
+      setCopiedScript(true);
+      setTimeout(() => setCopiedScript(false), 2500);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleOpenDesktopApp = () => {
@@ -111,10 +135,11 @@ export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOp
           {/* Primary Action Button */}
           <button
             onClick={handleDownload}
-            className="w-full max-w-sm py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl border border-emerald-500 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer"
+            disabled={downloading}
+            className="w-full max-w-sm py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl border border-emerald-500 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer"
           >
             <Laptop className="w-4 h-4" />
-            <span>{downloaded ? 'Downloaded! Double-click file to run' : 'Download Stealth Desktop App (.bat)'}</span>
+            <span>{downloading ? 'Preparing Download...' : downloaded ? 'Downloaded! Double-click file to run' : 'Download Stealth Desktop App (.bat)'}</span>
           </button>
 
           <p className="text-[11px] text-amber-300/90 bg-amber-950/30 border border-amber-800/40 p-2.5 rounded-xl text-left max-w-sm leading-relaxed">
@@ -137,36 +162,39 @@ export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOp
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleDownload}
-                className="py-2.5 px-3 bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
+                disabled={downloading}
+                className="py-2.5 px-3 bg-white hover:bg-slate-100 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
               >
                 <Laptop className="w-3.5 h-3.5" />
-                <span>Download .bat</span>
+                <span>{downloading ? 'Downloading...' : 'Download .bat'}</span>
               </button>
               <button
                 onClick={handleDownloadPs1}
-                className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
+                disabled={downloading}
+                className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Download .ps1</span>
               </button>
             </div>
 
-            {/* Direct PowerShell 1-Line Run Option */}
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-              <span className="text-[10px] text-slate-400 font-medium block">
-                Or run directly via Windows PowerShell (no download needed):
-              </span>
-              <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                <code className="text-[9.5px] text-indigo-300 font-mono truncate flex-1 select-all">
-                  {oneLineLaunchCmd}
-                </code>
+            {/* Direct Clipboard Option (100% immune to browser download blocks) */}
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-300 font-medium">
+                  Browser blocking .bat downloads?
+                </span>
                 <button
-                  onClick={handleCopyLaunchCmd}
-                  className="px-2 py-0.5 bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 rounded text-[10px] font-mono transition-colors shrink-0 cursor-pointer"
+                  onClick={handleCopyFullScript}
+                  className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded text-[10px] transition-colors cursor-pointer flex items-center gap-1"
                 >
-                  {copiedLaunchCmd ? 'Copied!' : 'Copy'}
+                  <Copy className="w-3 h-3" />
+                  <span>{copiedScript ? 'Copied to Clipboard!' : 'Copy Script Code'}</span>
                 </button>
               </div>
+              <p className="text-[9.5px] text-slate-400 leading-snug">
+                Click <strong>Copy Script Code</strong>, then open Notepad, paste (<code className="text-indigo-300">Ctrl+V</code>), save as <code className="text-emerald-300 font-mono">copilot.bat</code> on your Desktop, and double-click to run!
+              </p>
             </div>
 
             {downloaded && (

@@ -90,6 +90,27 @@ app.get('/api/system/status', (_req: Request, res: Response) => {
   });
 });
 
+// Explicit Static Download Routes for Desktop Stealth Apps
+app.get(['/InterviewCopilot-Stealth.bat', '/api/download/stealth-bat'], (_req: Request, res: Response) => {
+  const filePath = path.resolve(__dirname, 'public', 'InterviewCopilot-Stealth.bat');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Disposition', 'attachment; filename="InterviewCopilot-Stealth.bat"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    return res.sendFile(filePath);
+  }
+  return res.status(404).send('File not found');
+});
+
+app.get(['/InterviewCopilot-Stealth.ps1', '/api/download/stealth-ps1'], (_req: Request, res: Response) => {
+  const filePath = path.resolve(__dirname, 'public', 'InterviewCopilot-Stealth.ps1');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Disposition', 'attachment; filename="InterviewCopilot-Stealth.ps1"');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.sendFile(filePath);
+  }
+  return res.status(404).send('File not found');
+});
+
 // 1. Live Interview Answer Generation
 app.post('/api/gemini/answer', async (req: Request, res: Response) => {
   try {
@@ -257,17 +278,19 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
 - If there is only background music, silence, or noise without intelligible words, return an empty string "".
 - Output ONLY the transcribed text. Do not add explanations or quotes.`;
 
+    const audioPart = {
+      inlineData: {
+        mimeType,
+        data: audioBase64,
+      },
+    };
+    const textPart = {
+      text: prompt,
+    };
+
     const response = await generateWithFallback({
       preferredModels: ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
-      contents: [
-        {
-          inlineData: {
-            mimeType,
-            data: audioBase64,
-          },
-        },
-        prompt,
-      ],
+      contents: { parts: [audioPart, textPart] },
     });
 
     const transcript = response.text ? response.text.trim() : '';

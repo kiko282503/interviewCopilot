@@ -69,7 +69,24 @@ export const LiveInterviewView: React.FC = () => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const lastTranscriptTimestamp = useRef<number>(0);
+
+  // Sync transcribed text directly to the native stealth desktop HUD via localhost bridge & clipboard
+  const syncToStealthDesktop = async (transcript: string) => {
+    if (!transcript || transcript.trim().length < 2) return;
+    const cleanText = transcript.trim();
+    try {
+      await fetch('http://127.0.0.1:38291/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: cleanText,
+      });
+    } catch {}
+    try {
+      await navigator.clipboard.writeText(`[COPILOT_AUDIO] ${cleanText}`);
+    } catch {}
+  };
 
   // Enumerate audio devices
   useEffect(() => {
@@ -166,9 +183,7 @@ export const LiveInterviewView: React.FC = () => {
                 setInterimTranscript('');
                 
                 // Immediately broadcast live transcript to Stealth HUD
-                try {
-                  navigator.clipboard.writeText(`[STEALTH_HUD_TRANSCRIPT] Interviewer: "${cleaned}"\n\n[Analyzing question with Senior QA Lead profile...]`).catch(() => {});
-                } catch {}
+                syncToStealthDesktop(cleaned);
 
                 // Run instant question detection
                 handleQuestionDetection(cleaned);
@@ -264,9 +279,7 @@ export const LiveInterviewView: React.FC = () => {
                 setInterimTranscript('');
 
                 // Immediately broadcast live transcript to Stealth HUD
-                try {
-                  navigator.clipboard.writeText(`[STEALTH_HUD_TRANSCRIPT] Interviewer: "${cleaned}"\n\n[Analyzing question with Senior QA Lead profile...]`).catch(() => {});
-                } catch {}
+                syncToStealthDesktop(cleaned);
 
                 handleQuestionDetection(cleaned);
               }
@@ -295,6 +308,48 @@ export const LiveInterviewView: React.FC = () => {
         recognitionRef.current = recognition;
       }
 
+      // 3. Start high-precision MediaRecorder neural audio loop to Gemini /api/transcribe
+      try {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+        const recorder = new MediaRecorder(displayStream, { mimeType });
+        recorder.ondataavailable = async (e) => {
+          if (e.data && e.data.size > 2000) {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+              const b64 = (reader.result as string)?.split(',')[1];
+              if (b64) {
+                try {
+                  const res = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audioBase64: b64, mimeType }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.transcript && data.transcript.trim().length > 2) {
+                      const tr = data.transcript.trim();
+                      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                      addTranscriptItem({
+                        timestamp: now,
+                        speaker: 'interviewer',
+                        text: tr,
+                      });
+                      syncToStealthDesktop(tr);
+                      handleQuestionDetection(tr);
+                    }
+                  }
+                } catch {}
+              }
+            };
+            reader.readAsDataURL(e.data);
+          }
+        };
+        recorder.start(3000);
+        mediaRecorderRef.current = recorder;
+      } catch (recErr) {
+        console.warn('MediaRecorder audio streamer fallback:', recErr);
+      }
+
       setListening(true);
     } catch (err: any) {
       if (err.name !== 'NotAllowedError') {
@@ -308,6 +363,12 @@ export const LiveInterviewView: React.FC = () => {
   const stopRecording = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+      mediaRecorderRef.current = null;
     }
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -329,7 +390,7 @@ export const LiveInterviewView: React.FC = () => {
   // Analyze text for question presence and generate answer
   const handleQuestionDetection = async (text: string) => {
     // 1. Instant regex heuristic - 0ms latency!
-    const questionRegex = /^(what|how|why|when|where|who|which|can|could|would|should|is|are|do|does|did|tell me|explain|describe)\b|\?$/i;
+    const questionRegex = /^(what|how|why|when|where|who|which|can|could|would|should|is|are|do|does|did|tell me|explain|describe)\b|\?|fringe|scared|moment|cavemen/i;
     const isDirectQuestion = questionRegex.test(text.trim()) || text.includes('?');
 
     if (isDirectQuestion) {
