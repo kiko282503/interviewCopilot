@@ -12,41 +12,16 @@ import {
   Play,
   ArrowRight,
   Shield,
-  Layers,
   Sparkles,
-  ExternalLink,
-  Monitor,
   ShieldCheck,
-  Smartphone,
-  Terminal,
   Laptop,
 } from 'lucide-react';
-import { PWAInstallButton } from '../layout/PWAInstallButton';
-import { ScreenShareTestModal } from '../floating/ScreenShareTestModal';
-import { PhoneCompanionModal } from '../floating/PhoneCompanionModal';
-import { NativeInvisibilityModal } from '../floating/NativeInvisibilityModal';
 import { DesktopLauncherModal } from '../desktop/DesktopLauncherModal';
 
 export const DashboardView: React.FC = () => {
-  const { setCurrentTab, setFloatingMode, isFloatingMode, decoyPreset, isCamouflageMode, toggleCamouflageMode } = useAppStore();
+  const { setCurrentTab, decoyPreset } = useAppStore();
   const { profile } = useProfileStore();
-  const { isListening, audioInputName } = useInterviewStore();
-  const [showScreenTestModal, setShowScreenTestModal] = React.useState(false);
-  const [showCompanionModal, setShowCompanionModal] = React.useState(false);
-  const [showInvisibilityModal, setShowInvisibilityModal] = React.useState(false);
   const [showDesktopModal, setShowDesktopModal] = React.useState(false);
-
-  const handleLaunchDesktopHUD = () => {
-    const url = `${window.location.origin}${window.location.pathname}?mode=standalone-hud`;
-    const popup = window.open(
-      url,
-      'CopilotFloatingHUD',
-      'popup=yes,width=440,height=650,menubar=no,toolbar=no,status=no,resizable=yes'
-    );
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      setFloatingMode(true);
-    }
-  };
 
   const quickActions = [
     {
@@ -117,101 +92,22 @@ export const DashboardView: React.FC = () => {
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 shrink-0">
           <button
+            onClick={() => setCurrentTab('live')}
+            className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Play className="w-3.5 h-3.5 fill-current text-emerald-300" />
+            <span>Start Live Session (Browser Audio)</span>
+          </button>
+          <button
             onClick={() => setShowDesktopModal(true)}
             className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer border border-emerald-500"
             title="Download native Windows desktop app (100% invisible on Teams entire screen sharing)"
           >
             <Laptop className="w-4 h-4" />
-            <span>Download Native Stealth App (.bat)</span>
-          </button>
-          <button
-            onClick={handleLaunchDesktopHUD}
-            className="px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-            title="Pop out HUD as an independent Windows 11 desktop window that can be dragged outside this browser"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span>Pop Out Desktop HUD</span>
-          </button>
-          <button
-            onClick={() => setShowCompanionModal(true)}
-            className="px-3 py-2 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-            title="Scan QR code to open companion HUD on your smartphone (Zero apps on PC)"
-          >
-            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden xl:inline">Phone QR</span>
-          </button>
-          <button
-            onClick={() => setCurrentTab('live')}
-            className="px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-            <span>Start Live Session</span>
+            <span>Download Stealth App (.bat)</span>
           </button>
         </div>
       </div>
-
-      {/* Screen Share & Stealth Notice Banner */}
-      <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/70 border border-emerald-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
-            <ShieldCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-white flex items-center gap-2">
-              <span>Entire Screen Sharing Invisibility (Parakeet Method)</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-mono px-1.5 py-0.2 rounded border border-emerald-500/30">
-                WDA_EXCLUDEFROMCAPTURE
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-              To hide from Microsoft Teams and Zoom during <strong>Entire Screen sharing</strong> like Parakeet AI, activate the native Windows 11 DWM Cloak (<code className="text-emerald-300 font-mono">SetWindowDisplayAffinity</code>), run the native Electron desktop client, or use Phone Companion mode.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-          <button
-            onClick={() => setShowInvisibilityModal(true)}
-            className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Parakeet Cloak (WDA)</span>
-          </button>
-          <button
-            onClick={() => setShowCompanionModal(true)}
-            className="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Phone QR</span>
-          </button>
-          <button
-            onClick={toggleCamouflageMode}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer ${
-              isCamouflageMode
-                ? 'bg-amber-950 text-amber-300 border-amber-600'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isCamouflageMode ? 'Camouflage: ON' : 'Camouflage Mode'}</span>
-          </button>
-        </div>
-      </div>
-
-      <ScreenShareTestModal
-        isOpen={showScreenTestModal}
-        onClose={() => setShowScreenTestModal(false)}
-      />
-
-      <PhoneCompanionModal
-        isOpen={showCompanionModal}
-        onClose={() => setShowCompanionModal(false)}
-      />
-
-      <NativeInvisibilityModal
-        isOpen={showInvisibilityModal}
-        onClose={() => setShowInvisibilityModal(false)}
-      />
 
       <DesktopLauncherModal
         isOpen={showDesktopModal}

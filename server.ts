@@ -1,10 +1,21 @@
 import express, { Request, Response } from 'express';
+import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
-import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
+import {
+  GoogleGenAI,
+  Type,
+  ThinkingLevel,
+  Modality,
+  LiveServerMessage,
+  AudioTranscriptionConfigMode,
+  StartSensitivity,
+  EndSensitivity,
+} from '@google/genai';
+import { WebSocketServer } from 'ws';
 import mammoth from 'mammoth';
 
 const require = createRequire(import.meta.url);
@@ -33,8 +44,8 @@ const ai = new GoogleGenAI({
 });
 
 // Centralized default models with automatic fallback pool
-const TEXT_MODEL = 'gemini-3.1-flash-lite';
-const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+const TEXT_MODEL = 'gemini-4-hydrogen';
+const FALLBACK_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
 const TRANSCRIBE_MODEL = 'gemini-3.5-transcribe';
 
 // Automatic resilient model fallback to handle 503 high demand or 429 quota spikes seamlessly
@@ -42,15 +53,17 @@ async function generateWithFallback(options: {
   contents: any;
   config?: any;
   preferredModels?: string[];
+  stopOnQuota?: boolean;
 }) {
   const models = options.preferredModels || FALLBACK_MODELS;
   let lastError: any = null;
+  const modelErrors: string[] = [];
 
   for (const model of models) {
     try {
-      // Configure low thinking level on gemini-3.8-flash for fast responses
+      // Configure low thinking level on gemini-4-hydrogen for fast responses (skip for transcription model)
       const modelConfig = { ...(options.config || {}) };
-      if (model === 'gemini-3.8-flash' && !modelConfig.thinkingConfig) {
+      if (model === 'gemini-4-hydrogen' && !modelConfig.thinkingConfig) {
         modelConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
       }
 
@@ -62,16 +75,49 @@ async function generateWithFallback(options: {
       return response;
     } catch (err: any) {
       lastError = err;
-      const errMsg = err?.message || '';
-      console.warn(`Model ${model} unavailable (${errMsg.slice(0, 80)}...). Trying backup model...`);
+      const errMsg = String(err?.message || err || '');
+      modelErrors.push(`${model}[${err?.status || 'ERR'}]: ${errMsg.slice(0, 160)}`);
+      console.warn(`Model ${model} unavailable (${errMsg.slice(0, 140)}). Trying backup model...`);
 
-      // If it's the last model, or non-retryable error, throw
-      if (models.indexOf(model) === models.length - 1) {
+      const isQuota = err?.status === 429 || errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED');
+      if ((options.stopOnQuota && isQuota) || models.indexOf(model) === models.length - 1) {
+        (err as any).modelErrors = modelErrors;
         throw err;
       }
     }
   }
+  if (lastError) (lastError as any).modelErrors = modelErrors;
   throw lastError;
+}
+
+function extractReadableGeminiError(err: any, fallback: string): { status: number; message: string; retryAfterSec?: number; modelErrors?: string[] } {
+  const raw = String(err?.message || fallback);
+  const modelErrors: string[] | undefined = Array.isArray(err?.modelErrors) ? err.modelErrors : undefined;
+  const isQuota = err?.status === 429 || raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED');
+  if (isQuota) {
+    let retryAfterSec = 10;
+    const retryMatch = raw.match(/retry in\s+(\d+(?:\.\d+)?)s/i) || raw.match(/"retryDelay"\s*:\s*"(\d+)s"/i);
+    if (retryMatch) {
+      retryAfterSec = Math.max(5, Math.min(60, Math.ceil(Number(retryMatch[1]))));
+    }
+    return {
+      status: 429,
+      retryAfterSec,
+      message: `Gemini quota cooldown (${retryAfterSec}s) — Free Tier rate limit reached.`,
+      modelErrors,
+    };
+  }
+  if (raw.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.error?.message) {
+        return { status: Number(err?.status) || 500, message: String(parsed.error.message).slice(0, 140), modelErrors };
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+  }
+  return { status: Number(err?.status) || 500, message: raw.slice(0, 140) || fallback, modelErrors };
 }
 
 // -------------------------------------------------------------
@@ -90,22 +136,39 @@ app.get('/api/system/status', (_req: Request, res: Response) => {
   });
 });
 
-// Explicit Static Download Routes for Desktop Stealth Apps
-app.get(['/InterviewCopilot-Stealth.bat', '/api/download/stealth-bat'], (_req: Request, res: Response) => {
+// Explicit Static Download Routes for Desktop Stealth Apps (inject live bridge URL if requested directly)
+function buildBridgeOrigin(req: Request): string | null {
+  const host = req.get('x-forwarded-host') || req.get('host');
+  if (!host) return null;
+  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+  return `${proto}://${host}/`;
+}
+
+app.get(['/InterviewCopilot-Stealth.bat', '/api/download/stealth-bat'], (req: Request, res: Response) => {
   const filePath = path.resolve(__dirname, 'public', 'InterviewCopilot-Stealth.bat');
   if (fs.existsSync(filePath)) {
     res.setHeader('Content-Disposition', 'attachment; filename="InterviewCopilot-Stealth.bat"');
     res.setHeader('Content-Type', 'application/octet-stream');
+    const origin = buildBridgeOrigin(req);
+    if (origin) {
+      const text = fs.readFileSync(filePath, 'utf8').replace(/__COPILOT_BRIDGE_URL__/g, origin);
+      return res.send(text);
+    }
     return res.sendFile(filePath);
   }
   return res.status(404).send('File not found');
 });
 
-app.get(['/InterviewCopilot-Stealth.ps1', '/api/download/stealth-ps1'], (_req: Request, res: Response) => {
+app.get(['/InterviewCopilot-Stealth.ps1', '/api/download/stealth-ps1'], (req: Request, res: Response) => {
   const filePath = path.resolve(__dirname, 'public', 'InterviewCopilot-Stealth.ps1');
   if (fs.existsSync(filePath)) {
     res.setHeader('Content-Disposition', 'attachment; filename="InterviewCopilot-Stealth.ps1"');
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    const origin = buildBridgeOrigin(req);
+    if (origin) {
+      const text = fs.readFileSync(filePath, 'utf8').replace(/__COPILOT_BRIDGE_URL__/g, origin);
+      return res.send(text);
+    }
     return res.sendFile(filePath);
   }
   return res.status(404).send('File not found');
@@ -201,9 +264,9 @@ Provide your response in JSON format matching the schema.`;
     return res.json(parsed);
   } catch (error: any) {
     console.error('Gemini answer generation error:', error);
-    return res.status(500).json({
-      error: error.message || 'Failed to generate answer from Gemini API',
-    });
+    const clean = extractReadableGeminiError(error, 'Failed to generate answer from Gemini API');
+    if (clean.status === 429) res.setHeader('Retry-After', '5');
+    return res.status(clean.status).json({ error: clean.message });
   }
 });
 
@@ -256,32 +319,63 @@ Ignore conversational filler, greetings, confirmations ("okay", "I see", "let's 
     return res.json(parsed);
   } catch (error: any) {
     console.error('Question detection error:', error);
-    return res.status(500).json({ error: error.message || 'Question detection failed' });
+    const clean = extractReadableGeminiError(error, 'Question detection failed');
+    if (clean.status === 429) res.setHeader('Retry-After', '5');
+    return res.status(clean.status).json({ error: clean.message });
   }
 });
 
 // 2.5 High-Precision Audio Transcription via Gemini Speech Model
 app.post('/api/transcribe', async (req: Request, res: Response) => {
   try {
-    const { audioBase64, mimeType = 'audio/wav' } = req.body;
+    const { audioBase64, mimeType = 'audio/wav', previousTranscript = '' } = req.body;
 
-    if (!audioBase64 || audioBase64.length < 500) {
+    if (!audioBase64 || typeof audioBase64 !== 'string' || audioBase64.length < 400) {
       return res.json({ transcript: '' });
     }
 
     if (!geminiApiKey) {
-      return res.status(500).json({ error: 'Gemini API key is not configured' });
+      return res.status(500).json({ error: 'Gemini API key is not configured in server environment' });
     }
 
-    const prompt = `Transcribe the speech in this audio clip with high fidelity.
-- If dialogue, TV audio, or an interview question is spoken, output the exact transcribed words.
-- If there is only background music, silence, or noise without intelligible words, return an empty string "".
-- Output ONLY the transcribed text. Do not add explanations or quotes.`;
+    const cleanBase64 = audioBase64.replace(/^data:[^;]+;base64,/, '');
+
+    // Fast Node.js PCM energy check for WAV clips so silence/hum never burns API quota or triggers hallucinations
+    if (String(mimeType).toLowerCase().includes('wav')) {
+      const wavBuf = Buffer.from(cleanBase64, 'base64');
+      if (wavBuf.length > 44 && wavBuf.toString('ascii', 0, 4) === 'RIFF') {
+        const pcmBytes = wavBuf.length - 44;
+        if (pcmBytes < 4800) {
+          return res.json({ transcript: '' });
+        }
+        let maxAbs = 0;
+        let sumSq = 0;
+        const sampleCount = Math.floor(pcmBytes / 2);
+        for (let i = 44; i + 1 < wavBuf.length; i += 2) {
+          const s = wavBuf.readInt16LE(i);
+          const a = s < 0 ? -s : s;
+          if (a > maxAbs) maxAbs = a;
+          sumSq += s * s;
+        }
+        const rms = Math.sqrt(sumSq / Math.max(1, sampleCount));
+        if (maxAbs < 320 || rms < 65) {
+          return res.json({ transcript: '' });
+        }
+      }
+    }
+
+    const prevCtx = typeof previousTranscript === 'string'
+      ? previousTranscript.replace(/\s+/g, ' ').trim().slice(-160)
+      : '';
+
+    const prompt = prevCtx
+      ? `Transcribe every spoken English word in this audio clip accurately and verbatim (preceding context: "${prevCtx}"). Output ONLY the spoken words from this clip with natural punctuation. No timestamps, no speaker labels. If no speech is audible, output [NO_SPEECH].`
+      : `Transcribe every spoken English word in this audio clip accurately and verbatim. Output ONLY the spoken words with natural punctuation. No timestamps, no speaker labels. If no speech is audible, output [NO_SPEECH].`;
 
     const audioPart = {
       inlineData: {
         mimeType,
-        data: audioBase64,
+        data: cleanBase64,
       },
     };
     const textPart = {
@@ -289,15 +383,38 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     };
 
     const response = await generateWithFallback({
-      preferredModels: ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+      preferredModels: [TRANSCRIBE_MODEL, 'gemini-4-hydrogen'],
+      stopOnQuota: true,
       contents: { parts: [audioPart, textPart] },
     });
 
-    const transcript = response.text ? response.text.trim() : '';
+    let transcript = response.text ? response.text.trim() : '';
+    transcript = transcript
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(/^(?:\[?\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\s*(?:[-–>]+\s*\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)?\]?\s*)+/g, '')
+      .trim();
+
+    if (
+      !transcript ||
+      /^(\[.*?(no_speech|silence|inaudible|noise|music|no speech|empty).*?\]|\(.*?(no_speech|silence|inaudible|noise|music|no speech).*?\)|no speech|no_speech|silence|empty string)$/i.test(
+        transcript
+      )
+    ) {
+      return res.json({ transcript: '' });
+    }
+
     return res.json({ transcript });
   } catch (error: any) {
     console.error('Audio transcription error:', error);
-    return res.status(500).json({ error: error.message || 'Transcription failed' });
+    const clean = extractReadableGeminiError(error, 'Transcription failed');
+    if (clean.status === 429) {
+      res.setHeader('Retry-After', String(clean.retryAfterSec || 10));
+    }
+    return res.status(clean.status).json({
+      error: clean.message,
+      retryAfterSec: clean.retryAfterSec,
+      modelErrors: clean.modelErrors,
+    });
   }
 });
 
@@ -772,7 +889,158 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  const liveWss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    const urlPath = request.url || '';
+    if (urlPath.startsWith('/api/live-transcribe')) {
+      liveWss.handleUpgrade(request, socket, head, (ws) => {
+        liveWss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+
+  liveWss.on('connection', async (clientWs, request) => {
+    if (!geminiApiKey) {
+      clientWs.send(JSON.stringify({ type: 'error', error: 'Gemini API key missing' }));
+      clientWs.close();
+      return;
+    }
+
+    const reqUrl = new URL(request.url || '/api/live-transcribe', `http://${request.headers.host || 'localhost'}`);
+    const speaker = reqUrl.searchParams.get('speaker') === 'interviewee' ? 'interviewee' : 'interviewer';
+    let session: any = null;
+    let closed = false;
+
+    const callbacks = {
+      onmessage: (message: LiveServerMessage) => {
+        if (closed || clientWs.readyState !== 1) return;
+        const content: any = message.serverContent;
+        if (content?.interimInputTranscription?.text) {
+          clientWs.send(
+            JSON.stringify({
+              type: 'interim',
+              speaker,
+              text: content.interimInputTranscription.text,
+            })
+          );
+        }
+        if (content?.inputTranscription?.text) {
+          clientWs.send(
+            JSON.stringify({
+              type: 'transcript',
+              speaker,
+              text: content.inputTranscription.text,
+            })
+          );
+        }
+        if (content?.turnComplete) {
+          clientWs.send(JSON.stringify({ type: 'turnComplete', speaker }));
+        }
+      },
+      onerror: (err: any) => {
+        if (closed || clientWs.readyState !== 1) return;
+        const clean = extractReadableGeminiError(err, 'Live transcription error');
+        clientWs.send(
+          JSON.stringify({
+            type: 'error',
+            status: clean.status,
+            retryAfterSec: clean.retryAfterSec,
+            error: clean.message,
+          })
+        );
+      },
+      onclose: () => {
+        if (!closed && clientWs.readyState === 1) {
+          clientWs.send(JSON.stringify({ type: 'closed' }));
+          try { clientWs.close(); } catch {}
+        }
+      },
+    };
+
+    try {
+      try {
+        session = await ai.live.connect({
+          model: 'gemini-3.5-transcribe-live',
+          config: {
+            responseModalities: [Modality.TEXT],
+            inputAudioTranscription: {
+              languageCodes: ['en-US'],
+              mode: AudioTranscriptionConfigMode.VERBATIM,
+            },
+            realtimeInputConfig: {
+              automaticActivityDetection: {
+                startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+                endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+                prefixPaddingMs: 250,
+                silenceDurationMs: 800,
+              },
+            },
+          },
+          callbacks,
+        });
+      } catch {
+        session = await ai.live.connect({
+          model: 'gemini-3.5-transcribe-live',
+          config: {
+            responseModalities: [Modality.TEXT],
+            inputAudioTranscription: {
+              languageCodes: ['en-US'],
+            },
+          },
+          callbacks,
+        });
+      }
+
+      if (closed) {
+        try { session.close(); } catch {}
+        return;
+      }
+
+      if (clientWs.readyState === 1) {
+        clientWs.send(JSON.stringify({ type: 'ready', speaker, model: 'gemini-3.5-transcribe-live' }));
+      }
+    } catch (err: any) {
+      const clean = extractReadableGeminiError(err, 'Live API connection failed');
+      if (clientWs.readyState === 1) {
+        clientWs.send(
+          JSON.stringify({
+            type: 'error',
+            status: clean.status,
+            retryAfterSec: clean.retryAfterSec,
+            error: clean.message,
+          })
+        );
+        try { clientWs.close(); } catch {}
+      }
+      return;
+    }
+
+    clientWs.on('message', (raw) => {
+      if (closed || !session) return;
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg?.audio && typeof msg.audio === 'string') {
+          session.sendRealtimeInput({
+            audio: { data: msg.audio, mimeType: 'audio/pcm;rate=16000' },
+          });
+        }
+      } catch {}
+    });
+
+    clientWs.on('close', () => {
+      closed = true;
+      if (session) {
+        try { session.close(); } catch {}
+        session = null;
+      }
+    });
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`[Interview Copilot AI] Server running at http://0.0.0.0:${PORT}`);
   });
 }

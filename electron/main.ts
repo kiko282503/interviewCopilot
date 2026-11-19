@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, desktopCapturer, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, desktopCapturer, dialog, globalShortcut, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -15,7 +15,7 @@ function createMainWindow() {
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#020617', // slate-950
-    title: 'Interview Copilot AI',
+    title: 'Settings',
     frame: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -24,6 +24,10 @@ function createMainWindow() {
       sandbox: false,
     },
   });
+
+  try {
+    mainWindow.setContentProtection(true);
+  } catch {}
 
   const devUrl = 'http://localhost:3000';
   mainWindow.loadURL(devUrl).catch(() => {
@@ -77,6 +81,26 @@ function createCopilotFloatingWindow() {
 }
 
 app.whenReady().then(() => {
+  // Silent system-audio loopback handler (Parakeet-style zero-picker audio capture inside Electron)
+  try {
+    if (session?.defaultSession?.setDisplayMediaRequestHandler) {
+      session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ['screen'] })
+          .then((sources) => {
+            if (sources && sources.length > 0) {
+              callback({ video: sources[0], audio: 'loopback' });
+            } else {
+              callback({});
+            }
+          })
+          .catch(() => callback({}));
+      });
+    }
+  } catch (err) {
+    console.warn('Loopback handler registration notice:', err);
+  }
+
   createMainWindow();
 
   // OS-Wide Global Hotkey for Stealth Mode: CommandOrControl+Shift+H

@@ -14,6 +14,8 @@ import { CodeWorkspaceView } from './components/editor/CodeWorkspaceView';
 import { AIConfigView } from './components/settings/AIConfigView';
 import { AppSettingsView } from './components/settings/AppSettingsView';
 import { FloatingCopilotView } from './components/floating/FloatingCopilotView';
+import { BridgeConnectBanner } from './components/desktop/BridgeConnectBanner';
+import { useStealthNeuralBridge } from './hooks/useStealthNeuralBridge';
 
 export default function App() {
   const { currentTab, isFloatingMode, setFloatingMode, theme, decoyPreset, setDecoyPreset } = useAppStore();
@@ -23,6 +25,9 @@ export default function App() {
     new URLSearchParams(window.location.search).get('mode') === 'standalone-hud' ||
     new URLSearchParams(window.location.search).get('mode') === 'companion'
   );
+
+  // Zero-click background bridge for the Native Stealth Desktop (.bat)
+  useStealthNeuralBridge(!isStandalone);
 
   // Sync stealth decoy title on initial load
   useEffect(() => {
@@ -65,6 +70,9 @@ export default function App() {
     <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Application Header */}
       <Header />
+
+      {/* Native Stealth Desktop (.bat) Bridge Connection Banner */}
+      <BridgeConnectBanner />
 
       {/* Main Body */}
       <div className="flex-1 flex overflow-hidden relative">

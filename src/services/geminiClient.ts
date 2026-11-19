@@ -9,6 +9,37 @@ import {
   QuestionCategory,
 } from '../types';
 
+export async function safeParseJsonResponse<T = any>(res: Response, fallbackError: string): Promise<T> {
+  const raw = await res.text();
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.startsWith('<')) {
+    const err = new Error(
+      res.ok ? 'Server reconnecting — retrying shortly.' : `${fallbackError} (HTTP ${res.status})`
+    ) as Error & { status?: number; isHtml?: boolean };
+    err.status = res.status;
+    err.isHtml = true;
+    throw err;
+  }
+  let data: any;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    throw new Error(`${fallbackError} (Invalid JSON response)`);
+  }
+  if (!res.ok) {
+    const err = new Error(data?.error || `${fallbackError} (HTTP ${res.status})`) as Error & {
+      status?: number;
+      retryAfterSec?: number;
+    };
+    err.status = res.status;
+    if (typeof data?.retryAfterSec === 'number') {
+      err.retryAfterSec = data.retryAfterSec;
+    }
+    throw err;
+  }
+  return data as T;
+}
+
 export const geminiClient = {
   // Check system and API status
   async getSystemStatus(): Promise<{
@@ -20,11 +51,11 @@ export const geminiClient = {
   }> {
     try {
       const res = await fetch('/api/system/status');
-      return await res.json();
-    } catch (err) {
+      return await safeParseJsonResponse(res, 'System status check failed');
+    } catch {
       return {
         hasApiKey: false,
-        preferredModel: 'gemini-3.8-flash',
+        preferredModel: 'gemini-4-hydrogen',
         serverTime: new Date().toISOString(),
         status: 'offline',
         version: '1.0.0',
@@ -40,18 +71,29 @@ export const geminiClient = {
     profileContext?: string;
     conversationContext?: string;
   }): Promise<SuggestedAnswer> {
-    const res = await fetch('/api/gemini/answer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(err.error || 'Failed to generate answer');
+    let data: any;
+    let lastErr: any;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch('/api/gemini/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        });
+        data = await safeParseJsonResponse(res, 'Failed to generate answer');
+        lastErr = null;
+        break;
+      } catch (err: any) {
+        lastErr = err;
+        if (attempt === 0 && err?.isHtml) {
+          await new Promise((r) => setTimeout(r, 850));
+          continue;
+        }
+        throw err;
+      }
     }
+    if (lastErr) throw lastErr;
 
-    const data = await res.json();
     return {
       id: 'ans-' + Date.now(),
       questionId: 'q-' + Date.now(),
@@ -78,13 +120,14 @@ export const geminiClient = {
     urgency: 'high' | 'normal';
     confidence: number;
   }> {
-    const res = await fetch('/api/gemini/detect-question', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-
-    if (!res.ok) {
+    try {
+      const res = await fetch('/api/gemini/detect-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      return await safeParseJsonResponse(res, 'Question detection failed');
+    } catch {
       return {
         isQuestion: false,
         questionText: '',
@@ -93,8 +136,6 @@ export const geminiClient = {
         confidence: 0,
       };
     }
-
-    return await res.json();
   },
 
   // 3. AI Coding Assistant
@@ -109,13 +150,7 @@ export const geminiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Coding solver failed' }));
-      throw new Error(err.error || 'Failed to solve coding problem');
-    }
-
-    return await res.json();
+    return await safeParseJsonResponse<CodingSolution>(res, 'Failed to solve coding problem');
   },
 
   // 4. Multimodal Screenshot Analyzer
@@ -130,12 +165,7 @@ export const geminiClient = {
       body: JSON.stringify(params),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Screenshot analysis failed' }));
-      throw new Error(err.error || 'Failed to analyze screenshot');
-    }
-
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, 'Failed to analyze screenshot');
     return {
       id: 'ss-' + Date.now(),
       imageUrl: params.imageBase64,
@@ -169,12 +199,7 @@ export const geminiClient = {
         signal: controller.signal,
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Resume parse failed' }));
-        throw new Error(err.error || 'Failed to parse resume');
-      }
-
-      return await res.json();
+      return await safeParseJsonResponse<Partial<ProfessionalProfile>>(res, 'Failed to parse resume');
     } catch (err: any) {
       if (err.name === 'AbortError') {
         throw new Error('Upload timed out. The server or connection took too long. Please paste your resume text directly into the box below.');
@@ -201,12 +226,7 @@ export const geminiClient = {
       body: JSON.stringify(params),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Practice evaluation failed' }));
-      throw new Error(err.error || 'Failed to evaluate response');
-    }
-
-    return await res.json();
+    return await safeParseJsonResponse<PracticeFeedback>(res, 'Failed to evaluate response');
   },
 
   // 7. Safe Sandboxed Code Runner
@@ -222,11 +242,6 @@ export const geminiClient = {
       body: JSON.stringify({ code, language }),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Code execution failed' }));
-      throw new Error(err.error || 'Execution failed');
-    }
-
-    return await res.json();
+    return await safeParseJsonResponse(res, 'Execution failed');
   },
 };

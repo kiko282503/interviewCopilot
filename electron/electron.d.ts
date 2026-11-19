@@ -63,4 +63,16 @@ declare module 'electron' {
   export const contextBridge: {
     exposeInMainWorld: (apiKey: string, api: any) => void;
   };
+
+  export const session: {
+    defaultSession: {
+      setDisplayMediaRequestHandler?: (
+        handler: (
+          request: any,
+          callback: (streams: { video?: any; audio?: string }) => void
+        ) => void,
+        options?: { useSystemPicker?: boolean }
+      ) => void;
+    };
+  };
 }

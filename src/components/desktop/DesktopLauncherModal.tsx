@@ -3,14 +3,16 @@ import {
   Download,
   ExternalLink,
   Laptop,
-  Check,
   ShieldCheck,
   Sparkles,
   X,
   ArrowLeft,
   CheckCircle2,
   Copy,
+  AlertTriangle,
+  Radio,
 } from 'lucide-react';
+import { useAppStore } from '../../store/useAppStore';
 
 interface DesktopLauncherModalProps {
   isOpen: boolean;
@@ -22,64 +24,90 @@ export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOp
   const [downloading, setDownloading] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [copiedBridgeUrl, setCopiedBridgeUrl] = useState(false);
+
+  const { stealthBridgeStatus, stealthAudioPeak, stealthAudioErrors, stealthBridgeError, isBraveBrowser } = useAppStore();
 
   if (!isOpen) return null;
 
-  const handleDownload = () => {
+  const isInIframe = (() => {
+    try {
+      return typeof window !== 'undefined' && window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
+
+  const standaloneBridgeUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : '/';
+
+  const handleCopyBridgeUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(standaloneBridgeUrl);
+      setCopiedBridgeUrl(true);
+      setTimeout(() => setCopiedBridgeUrl(false), 2000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const downloadPersonalizedScript = async (path: string, filename: string) => {
     try {
       setDownloading(true);
+      const res = await fetch(path);
+      if (!res.ok) throw new Error('Fetch failed');
+      const raw = await res.text();
+      const personalized = raw.replace(/__COPILOT_BRIDGE_URL__/g, standaloneBridgeUrl);
+      const blob = new Blob([personalized], { type: 'application/octet-stream' });
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
-      a.href = '/InterviewCopilot-Stealth.bat';
-      a.download = 'InterviewCopilot-Stealth.bat';
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      setDownloaded(true);
+    } catch {
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = path;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
         if (document.body.contains(a)) document.body.removeChild(a);
       }, 500);
       setDownloaded(true);
-    } catch (err) {
-      console.error('Download error:', err);
     } finally {
       setTimeout(() => setDownloading(false), 1000);
     }
   };
 
+  const handleDownload = () => {
+    void downloadPersonalizedScript('/InterviewCopilot-Stealth.bat', 'InterviewCopilot-Stealth.bat');
+  };
+
   const handleDownloadPs1 = () => {
-    try {
-      setDownloading(true);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = '/InterviewCopilot-Stealth.ps1';
-      a.download = 'InterviewCopilot-Stealth.ps1';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-      }, 500);
-      setDownloaded(true);
-    } catch (err) {
-      console.error('Download error:', err);
-    } finally {
-      setTimeout(() => setDownloading(false), 1000);
-    }
+    void downloadPersonalizedScript('/InterviewCopilot-Stealth.ps1', 'InterviewCopilot-Stealth.ps1');
   };
 
   const handleCopyFullScript = async () => {
     try {
       const res = await fetch('/InterviewCopilot-Stealth.bat');
       if (!res.ok) throw new Error('Fetch failed');
-      const text = await res.text();
+      const text = (await res.text()).replace(/__COPILOT_BRIDGE_URL__/g, standaloneBridgeUrl);
       await navigator.clipboard.writeText(text);
       setCopiedScript(true);
       setTimeout(() => setCopiedScript(false), 2500);
     } catch (err) {
       console.error(err);
     }
-  };
-
-  const handleOpenDesktopApp = () => {
-    handleDownload();
   };
 
   const selfContainedCmd = `Add-Type 'using System;using System.Runtime.InteropServices;public class WDA{[DllImport("user32.dll")]public static extern bool SetWindowDisplayAffinity(IntPtr h,uint a);}';Get-Process|Where-Object{$_.MainWindowTitle -match 'Interview|Copilot|Settings|Terminal'}|ForEach-Object{[WDA]::SetWindowDisplayAffinity($_.MainWindowHandle,0x11);Write-Host "[SUCCESS] Cloaked from Teams: $($_.MainWindowTitle)" -ForegroundColor Green}`;
@@ -128,7 +156,7 @@ export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOp
               </span>
             </h2>
             <p className="text-xs text-slate-300 mt-2 max-w-sm mx-auto leading-relaxed">
-              Native Windows 11 app that floats beneath your webcam, auto-transcribes, and provides 0.1s Senior QA Lead answers. <strong>100% invisible when sharing Entire Screen on Teams!</strong>
+              Native Windows 11 app that captures <strong>both System Audio (Interviewer) &amp; Mic (Interviewee)</strong> via WASAPI, floats beneath your webcam, and renders a live conversation timeline + Gemini answers.
             </p>
           </div>
 
@@ -142,9 +170,86 @@ export const DesktopLauncherModal: React.FC<DesktopLauncherModalProps> = ({ isOp
             <span>{downloading ? 'Preparing Download...' : downloaded ? 'Downloaded! Double-click file to run' : 'Download Stealth Desktop App (.bat)'}</span>
           </button>
 
-          <p className="text-[11px] text-amber-300/90 bg-amber-950/30 border border-amber-800/40 p-2.5 rounded-xl text-left max-w-sm leading-relaxed">
-            <strong>Important:</strong> Once you run the stealth app, you can completely close this Google Chrome tab! You only need Microsoft Teams open.
-          </p>
+          {/* Live Bridge Status & Iframe Bypass */}
+          {stealthBridgeStatus === 'connected' ? (
+            <div className="w-full max-w-sm p-3 rounded-xl bg-emerald-950/50 border border-emerald-700/60 text-left space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
+                <span className="flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                  Gemini Bridge Connected (127.0.0.1:38291)
+                </span>
+                <span className="font-mono text-[10px]">
+                  Spk {stealthAudioPeak.speaker}% · Mic {stealthAudioPeak.mic}%
+                </span>
+              </div>
+              {(stealthAudioErrors.speakerError || stealthAudioErrors.micError) && (
+                <p className="text-[10px] text-amber-300 font-mono">
+                  {stealthAudioErrors.speakerError || stealthAudioErrors.micError}
+                </p>
+              )}
+            </div>
+          ) : isInIframe || stealthBridgeStatus === 'iframe-blocked' ? (
+            <div className="w-full max-w-sm p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/50 text-left space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-100 leading-relaxed">
+                  <strong>Why .bat shows &quot;Bridge: Waiting&quot;:</strong> You are inside the AI Studio preview iframe. Chrome &amp; Brave block local <code className="text-amber-300">127.0.0.1</code> bridge calls inside iframes.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <a
+                  href={standaloneBridgeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Bridge Tab</span>
+                </a>
+                <button
+                  onClick={handleCopyBridgeUrl}
+                  className="py-2 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] rounded-lg border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Copy URL to paste into Microsoft Edge or Google Chrome"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>{copiedBridgeUrl ? 'Copied!' : 'Copy URL'}</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-300 leading-snug">
+                <strong>In Brave:</strong> On the opened <em>Interview Copilot</em> tab (not your video tab), click the orange Lion icon and flip the top-right toggle switch OFF (so it says <strong>Shields down</strong>). If Brave still prompts/blocks localhost, paste the copied URL into <strong>Microsoft Edge</strong> or <strong>Chrome</strong>.
+              </p>
+            </div>
+          ) : isBraveBrowser ? (
+            <div className="w-full max-w-sm p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/50 text-left space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-100 leading-relaxed">
+                  <strong>Brave blocked local bridge (127.0.0.1:38291):</strong> Even with Shields down, Brave blocks <code className="text-amber-300">localhost</code> unless allowed in <code className="text-amber-300">brave://settings/content/localhost</code> (set to Ask/Allow) or site permissions.
+                  {stealthBridgeError ? <span className="block text-[10px] text-amber-300/80 font-mono mt-1">Status: {stealthBridgeError}</span> : null}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <span className="text-[10px] text-slate-300">Easiest: Open this URL in Chrome / Edge:</span>
+                <button
+                  onClick={handleCopyBridgeUrl}
+                  className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[10.5px] rounded-lg border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>{copiedBridgeUrl ? 'Copied!' : 'Copy URL'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-sm p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-left space-y-1.5">
+              <p className="text-[11px] text-emerald-200/90 leading-relaxed">
+                <strong>Zero-Click Gemini AI Mode:</strong> Keep this top-level tab open. If Chrome/Edge asks to allow local network access (<code className="text-emerald-300 font-mono">127.0.0.1</code>), click <strong>Allow</strong> so the <code className="text-emerald-300 font-mono">.bat</code> connects automatically.
+              </p>
+              {stealthBridgeError ? (
+                <p className="text-[10px] text-amber-300 font-mono">Bridge note: {stealthBridgeError}</p>
+              ) : null}
+            </div>
+          )}
+
           <div className="w-full max-w-xs border-t border-slate-800 my-1" />
 
           {/* Parakeet-Style Download Box */}

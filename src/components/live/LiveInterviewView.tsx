@@ -4,6 +4,7 @@ import { useProfileStore } from '../../store/useProfileStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useCodeStore } from '../../store/useCodeStore';
 import { geminiClient } from '../../services/geminiClient';
+import { startWavSpeechChunker, WavChunkerHandle } from '../../utils/audioWavChunker';
 import { ResponseLength, QuestionCategory } from '../../types';
 import {
   Mic,
@@ -23,6 +24,7 @@ import {
   Sliders,
   ChevronDown,
   Headphones,
+  Speaker,
 } from 'lucide-react';
 
 export const LiveInterviewView: React.FC = () => {
@@ -32,6 +34,9 @@ export const LiveInterviewView: React.FC = () => {
     selectedAudioDeviceId,
     audioInputName,
     setAudioDevice,
+    selectedAudioOutputId,
+    audioOutputName,
+    setAudioOutputDevice,
     audioVolume,
     setAudioVolume,
     transcripts,
@@ -57,20 +62,28 @@ export const LiveInterviewView: React.FC = () => {
   const { addTab } = useCodeStore();
 
   const [availableDevices, setAvailableDevices] = useState<{ id: string; label: string }[]>([]);
+  const [availableOutputs, setAvailableOutputs] = useState<{ id: string; label: string }[]>([]);
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [manualInput, setManualInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [isTranscribingChunk, setIsTranscribingChunk] = useState(false);
+  const [capturingSystemAudio, setCapturingSystemAudio] = useState(false);
+  const [capturingMic, setCapturingMic] = useState(false);
   const [mobileTab, setMobileTab] = useState<'transcript' | 'answer'>('answer');
 
-  // Audio Context and Speech Recognition references
+  // Audio Context, WAV Chunkers, Streams & Speech Recognition references
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  const micChunkerRef = useRef<WavChunkerHandle | null>(null);
+  const displayChunkerRef = useRef<WavChunkerHandle | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const lastTranscriptTimestamp = useRef<number>(0);
+  const isListeningRef = useRef<boolean>(false);
+  const lastCommittedRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
+  const transcribingInFlightRef = useRef<number>(0);
 
   // Sync transcribed text directly to the native stealth desktop HUD via localhost bridge & clipboard
   const syncToStealthDesktop = async (transcript: string) => {
@@ -88,36 +101,161 @@ export const LiveInterviewView: React.FC = () => {
     } catch {}
   };
 
-  // Enumerate audio devices
-  useEffect(() => {
-    async function loadDevices() {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const audioInputs = devices
-            .filter((d) => d.kind === 'audioinput')
-            .map((d, i) => ({
-              id: d.deviceId || `device-${i}`,
-              label: d.label || `Microphone ${i + 1} (Windows Audio Device)`,
-            }));
-          if (audioInputs.length > 0) {
-            setAvailableDevices(audioInputs);
-          } else {
-            setAvailableDevices([
-              { id: 'default', label: 'Default Microphone (Realtek Audio)' },
-              { id: 'loopback', label: 'Windows Stereo Mix / System Audio Loopback' },
-            ]);
-          }
-        }
-      } catch (err) {
-        setAvailableDevices([
-          { id: 'default', label: 'Default Microphone (Realtek Audio)' },
-          { id: 'loopback', label: 'Windows Stereo Mix / System Audio Loopback' },
-        ]);
+  const commitTranscript = (rawText: string, speaker: 'interviewer' | 'candidate' = 'interviewer') => {
+    const cleaned = rawText.trim();
+    if (cleaned.length < 3) return;
+
+    const nowMs = Date.now();
+    const norm = cleaned.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    if (
+      lastCommittedRef.current.text === norm &&
+      nowMs - lastCommittedRef.current.time < 5000
+    ) {
+      return;
+    }
+    lastCommittedRef.current = { text: norm, time: nowMs };
+
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    addTranscriptItem({
+      timestamp: nowStr,
+      speaker,
+      text: cleaned,
+    });
+    setInterimTranscript('');
+
+    // Immediately broadcast live transcript to Stealth HUD
+    syncToStealthDesktop(cleaned);
+
+    // Run instant question detection only for interviewer speech
+    if (speaker === 'interviewer') {
+      handleQuestionDetection(cleaned);
+    }
+  };
+
+  const sendWavToTranscribe = async (wavBase64: string, speaker: 'interviewer' | 'candidate') => {
+    transcribingInFlightRef.current += 1;
+    setIsTranscribingChunk(true);
+    try {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioBase64: wavBase64, mimeType: 'audio/wav' }),
+      });
+
+      const { safeParseJsonResponse } = await import('../../services/geminiClient');
+      const data = await safeParseJsonResponse<{ transcript?: string }>(res, 'Audio transcription failed');
+      if (data.transcript && data.transcript.trim().length >= 3) {
+        setAudioError(null);
+        commitTranscript(data.transcript.trim(), speaker);
+      }
+    } catch (err: any) {
+      console.error('Audio chunk transcription error:', err);
+      setAudioError(err?.message || 'Transcription request failed. Check server API status.');
+    } finally {
+      transcribingInFlightRef.current = Math.max(0, transcribingInFlightRef.current - 1);
+      if (transcribingInFlightRef.current === 0) {
+        setIsTranscribingChunk(false);
       }
     }
-    loadDevices();
+  };
+
+  // Enumerate BOTH microphone inputs AND browser speaker/headphone audio outputs
+  const loadAudioDevices = async (requestPermission = false) => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      const hasAnyLabel = devices.some((d) => Boolean(d.label && d.label.trim().length > 0));
+
+      if (requestPermission && !hasAnyLabel && navigator.mediaDevices.getUserMedia) {
+        try {
+          const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tempStream.getTracks().forEach((t) => t.stop());
+          devices = await navigator.mediaDevices.enumerateDevices();
+        } catch (permErr: any) {
+          setAudioError(
+            permErr?.message || 'Please allow microphone access in the browser address bar to reveal audio devices.'
+          );
+        }
+      }
+
+      const inputs = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, i) => ({
+          id: d.deviceId || `input-${i}`,
+          label:
+            d.label ||
+            (d.deviceId === 'default'
+              ? 'Browser Default Microphone'
+              : `Microphone ${i + 1} (Click Refresh to unlock name)`),
+        }));
+
+      const outputs = devices
+        .filter((d) => d.kind === 'audiooutput')
+        .map((d, i) => ({
+          id: d.deviceId || `output-${i}`,
+          label:
+            d.label ||
+            (d.deviceId === 'default'
+              ? 'Browser Default Speakers / Headphones'
+              : `Audio Output ${i + 1}`),
+        }));
+
+      const resolvedInputs =
+        inputs.length > 0
+          ? inputs
+          : [{ id: 'default', label: 'Browser Default Microphone' }];
+      const resolvedOutputs =
+        outputs.length > 0
+          ? outputs
+          : [{ id: 'default', label: 'Browser Default Speakers / Headphones' }];
+
+      setAvailableDevices(resolvedInputs);
+      setAvailableOutputs(resolvedOutputs);
+
+      // Keep store device labels synced with real browser hardware names
+      const currentIn = resolvedInputs.find((d) => d.id === selectedAudioDeviceId) || resolvedInputs[0];
+      if (currentIn && currentIn.label !== audioInputName) {
+        setAudioDevice(currentIn.id, currentIn.label);
+      }
+      const currentOut = resolvedOutputs.find((d) => d.id === selectedAudioOutputId) || resolvedOutputs[0];
+      if (currentOut && currentOut.label !== audioOutputName) {
+        setAudioOutputDevice(currentOut.id, currentOut.label);
+      }
+    } catch {
+      setAvailableDevices([{ id: 'default', label: 'Browser Default Microphone' }]);
+      setAvailableOutputs([{ id: 'default', label: 'Browser Default Speakers / Headphones' }]);
+    }
+  };
+
+  useEffect(() => {
+    loadAudioDevices(false);
+    const onDeviceChange = () => {
+      loadAudioDevices(false);
+    };
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
+      return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
+    }
   }, []);
+
+  const ensureAudioContext = async (): Promise<AudioContext> => {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      return audioContextRef.current;
+    }
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioCtx();
+    audioContextRef.current = ctx;
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 64;
+    analyserRef.current = analyser;
+    updateVolume();
+    return ctx;
+  };
 
   // Web Audio Analyser volume meter loop
   const updateVolume = () => {
@@ -130,258 +268,234 @@ export const LiveInterviewView: React.FC = () => {
       sum += dataArray[i];
     }
     const average = sum / dataArray.length;
-    // Map to 0-100
-    setAudioVolume(Math.min(100, Math.round(average * 1.8)));
+    setAudioVolume(Math.min(100, Math.round(average * 2.2)));
 
     animationFrameRef.current = requestAnimationFrame(updateVolume);
   };
 
-  // Start real-time speech recognition
-  const startRecording = async () => {
+  // Start capturing selected browser microphone input
+  const startRecording = async (overrideDeviceId?: string, overrideDeviceName?: string) => {
     setAudioError(null);
+    const activeDeviceId = overrideDeviceId ?? useInterviewStore.getState().selectedAudioDeviceId;
+    const activeDeviceName = overrideDeviceName ?? useInterviewStore.getState().audioInputName;
     try {
-      // 1. Initialize microphone audio stream
-      const constraints: MediaStreamConstraints = {
-        audio: selectedAudioDeviceId === 'default' ? true : { deviceId: { exact: selectedAudioDeviceId } },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      mediaStreamRef.current = stream;
-
-      // 2. Setup AudioContext for real-time volume indicator
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-      updateVolume();
-
-      // 3. Setup Web Speech API for low-latency live streaming transcription
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = async (event: any) => {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              const cleaned = transcript.trim();
-              if (cleaned.length > 2) {
-                const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                addTranscriptItem({
-                  timestamp: now,
-                  speaker: 'interviewer',
-                  text: cleaned,
-                });
-                setInterimTranscript('');
-                
-                // Immediately broadcast live transcript to Stealth HUD
-                syncToStealthDesktop(cleaned);
-
-                // Run instant question detection
-                handleQuestionDetection(cleaned);
-              }
-            } else {
-              interim += transcript;
-            }
-          }
-          if (interim) {
-            setInterimTranscript(interim);
-          }
+      let stream: MediaStream;
+      try {
+        const constraints: MediaStreamConstraints = {
+          audio:
+            activeDeviceId === 'default'
+              ? { echoCancellation: true, noiseSuppression: true }
+              : { deviceId: { exact: activeDeviceId }, echoCancellation: true, noiseSuppression: true },
         };
-
-        recognition.onerror = (e: any) => {
-          console.warn('Speech recognition warning:', e.error);
-          if (e.error === 'not-allowed') {
-            setAudioError('Microphone permission denied. Please allow microphone access in browser settings.');
-          }
-        };
-
-        recognition.onend = () => {
-          if (isListening) {
-            try {
-              recognition.start();
-            } catch (err) {
-              // ignore restart race condition
-            }
-          }
-        };
-
-        recognition.start();
-        recognitionRef.current = recognition;
-      } else {
-        console.info('SpeechRecognition API not available in this browser engine; manual input and audio volume active.');
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (exactErr: any) {
+        if (activeDeviceId !== 'default') {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { ideal: activeDeviceId } },
+          });
+        } else {
+          throw exactErr;
+        }
       }
 
+      if (micChunkerRef.current) {
+        micChunkerRef.current.stop();
+        micChunkerRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      micStreamRef.current = stream;
+
+      // Refresh real hardware device names now that mic permission is active
+      loadAudioDevices(false);
+
+      const audioCtx = await ensureAudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      if (analyserRef.current) {
+        source.connect(analyserRef.current);
+      }
+
+      // Attach WAV speech chunker directly to the selected microphone stream
+      const isLoopbackInput = /stereo mix|what u hear|cable|loopback|voicemeeter/i.test(activeDeviceName);
+      micChunkerRef.current = startWavSpeechChunker({
+        audioCtx,
+        sourceNode: source,
+        onSpeechChunk: (wavBase64) => {
+          sendWavToTranscribe(wavBase64, isLoopbackInput ? 'interviewer' : 'candidate');
+        },
+      });
+
+      // Also attach Web Speech API ONLY when using default device as an optional low-latency interim preview
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition && activeDeviceId === 'default' && !recognitionRef.current) {
+        try {
+          const recognition = new SpeechRecognition();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = 'en-US';
+
+          recognition.onresult = (event: any) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (!event.results[i].isFinal) {
+                interim += event.results[i][0].transcript;
+              }
+            }
+            if (interim) {
+              setInterimTranscript(interim);
+            }
+          };
+
+          recognition.onerror = (e: any) => {
+            if (e.error !== 'no-speech' && e.error !== 'aborted') {
+              console.warn('WebSpeech notice:', e.error);
+            }
+          };
+
+          recognition.onend = () => {
+            if (isListeningRef.current && recognitionRef.current === recognition) {
+              try {
+                recognition.start();
+              } catch {}
+            }
+          };
+
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {}
+      }
+
+      isListeningRef.current = true;
+      setCapturingMic(true);
       setListening(true);
     } catch (err: any) {
       console.error('Failed to start audio capture:', err);
-      setAudioError(err.message || 'Could not access the selected audio device');
-      setListening(false);
+      setAudioError(err?.message || 'Could not access the selected browser microphone device');
+      if (!displayStreamRef.current) {
+        isListeningRef.current = false;
+        setListening(false);
+      }
     }
   };
 
-  // Capture Microsoft Teams / Meeting Audio directly from the browser tab
+  // Capture Microsoft Teams / Browser Tab / Windows System Sound Output directly
   const startTeamsAudioCapture = async () => {
     setAudioError(null);
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: true,
-      });
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        } as any,
+        systemAudio: 'include',
+      } as any);
 
       const audioTrack = displayStream.getAudioTracks()[0];
       if (!audioTrack) {
-        setAudioError('No audio track detected. Make sure to check "Also share tab audio" when selecting the Teams tab.');
+        setAudioError(
+          'No audio track shared. In the browser popup, select the Teams/Video tab (or Entire Screen) and check "Also share tab/system audio".'
+        );
         displayStream.getTracks().forEach((t) => t.stop());
         return;
       }
 
-      mediaStreamRef.current = displayStream;
+      if (displayChunkerRef.current) {
+        displayChunkerRef.current.stop();
+        displayChunkerRef.current = null;
+      }
+      if (displayStreamRef.current) {
+        displayStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      displayStreamRef.current = displayStream;
 
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(displayStream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-      updateVolume();
-
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = async (event: any) => {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              const cleaned = transcript.trim();
-              if (cleaned.length > 2) {
-                const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                addTranscriptItem({
-                  timestamp: now,
-                  speaker: 'interviewer',
-                  text: cleaned,
-                });
-                setInterimTranscript('');
-
-                // Immediately broadcast live transcript to Stealth HUD
-                syncToStealthDesktop(cleaned);
-
-                handleQuestionDetection(cleaned);
-              }
-            } else {
-              interim += transcript;
-            }
-          }
-          if (interim) {
-            setInterimTranscript(interim);
-          }
-        };
-
-        recognition.onerror = (e: any) => {
-          console.warn('Teams speech recognition notice:', e.error);
-        };
-
-        recognition.onend = () => {
-          if (isListening) {
-            try {
-              recognition.start();
-            } catch {}
-          }
-        };
-
-        recognition.start();
-        recognitionRef.current = recognition;
+      const audioOnlyStream = new MediaStream([audioTrack]);
+      const audioCtx = await ensureAudioContext();
+      const source = audioCtx.createMediaStreamSource(audioOnlyStream);
+      if (analyserRef.current) {
+        source.connect(analyserRef.current);
       }
 
-      // 3. Start high-precision MediaRecorder neural audio loop to Gemini /api/transcribe
-      try {
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-        const recorder = new MediaRecorder(displayStream, { mimeType });
-        recorder.ondataavailable = async (e) => {
-          if (e.data && e.data.size > 2000) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-              const b64 = (reader.result as string)?.split(',')[1];
-              if (b64) {
-                try {
-                  const res = await fetch('/api/transcribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ audioBase64: b64, mimeType }),
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.transcript && data.transcript.trim().length > 2) {
-                      const tr = data.transcript.trim();
-                      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                      addTranscriptItem({
-                        timestamp: now,
-                        speaker: 'interviewer',
-                        text: tr,
-                      });
-                      syncToStealthDesktop(tr);
-                      handleQuestionDetection(tr);
-                    }
-                  }
-                } catch {}
-              }
-            };
-            reader.readAsDataURL(e.data);
-          }
-        };
-        recorder.start(3000);
-        mediaRecorderRef.current = recorder;
-      } catch (recErr) {
-        console.warn('MediaRecorder audio streamer fallback:', recErr);
-      }
+      // Send valid standalone 16kHz WAV speech chunks from captured sound output to /api/transcribe
+      displayChunkerRef.current = startWavSpeechChunker({
+        audioCtx,
+        sourceNode: source,
+        onSpeechChunk: (wavBase64) => {
+          sendWavToTranscribe(wavBase64, 'interviewer');
+        },
+      });
 
+      audioTrack.onended = () => {
+        if (displayChunkerRef.current) {
+          displayChunkerRef.current.stop();
+          displayChunkerRef.current = null;
+        }
+        displayStreamRef.current = null;
+        setCapturingSystemAudio(false);
+        if (!micStreamRef.current) {
+          isListeningRef.current = false;
+          setListening(false);
+          setAudioVolume(0);
+        }
+      };
+
+      isListeningRef.current = true;
+      setCapturingSystemAudio(true);
       setListening(true);
     } catch (err: any) {
-      if (err.name !== 'NotAllowedError') {
-        console.error('Failed to capture Teams audio:', err);
-        setAudioError(err.message || 'Could not capture meeting audio.');
+      if (err?.name !== 'NotAllowedError') {
+        console.error('Failed to capture browser sound output:', err);
+        setAudioError(err?.message || 'Could not capture tab or system audio output.');
       }
-      setListening(false);
+      if (!micStreamRef.current) {
+        isListeningRef.current = false;
+        setListening(false);
+      }
     }
   };
 
   const stopRecording = () => {
+    isListeningRef.current = false;
+    setCapturingMic(false);
+    setCapturingSystemAudio(false);
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
-    if (mediaRecorderRef.current) {
+    if (micChunkerRef.current) {
       try {
-        mediaRecorderRef.current.stop();
+        micChunkerRef.current.stop();
       } catch {}
-      mediaRecorderRef.current = null;
+      micChunkerRef.current = null;
+    }
+    if (displayChunkerRef.current) {
+      try {
+        displayChunkerRef.current.stop();
+      } catch {}
+      displayChunkerRef.current = null;
     }
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch {}
       recognitionRef.current = null;
     }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+    if (displayStreamRef.current) {
+      displayStreamRef.current.getTracks().forEach((track) => track.stop());
+      displayStreamRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
+    analyserRef.current = null;
     setAudioVolume(0);
     setInterimTranscript('');
     setListening(false);
@@ -679,10 +793,10 @@ export const LiveInterviewView: React.FC = () => {
       {/* Control Bar */}
       <div className="border-b border-slate-800/80 bg-slate-900/50 px-3 sm:px-6 py-2.5 sm:py-3.5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          {/* Record Start / Stop Toggle */}
+          {/* Microphone Input Start / Stop Toggle */}
           <button
-            onClick={isListening ? stopRecording : startRecording}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm ${
+            onClick={() => (isListening ? stopRecording() : startRecording())}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm cursor-pointer ${
               isListening
                 ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
                 : 'bg-indigo-600 hover:bg-indigo-500 text-white'
@@ -701,31 +815,38 @@ export const LiveInterviewView: React.FC = () => {
             )}
           </button>
 
-          {/* Capture Teams Audio Button */}
-          {!isListening && (
-            <button
-              onClick={startTeamsAudioCapture}
-              className="px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer border border-emerald-500"
-              title="Directly capture digital audio from the Microsoft Teams browser tab"
-            >
-              <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-200" />
-              <span>Capture Teams Audio</span>
-            </button>
-          )}
-
-          {/* Audio Input Device Selector Button */}
+          {/* Capture System / Teams Sound Output Button (Always available even while Mic is running) */}
           <button
-            onClick={() => setShowDeviceModal(!showDeviceModal)}
-            className="px-2.5 sm:px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 sm:gap-2 transition-colors max-w-[160px] sm:max-w-xs"
+            onClick={startTeamsAudioCapture}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm cursor-pointer border ${
+              capturingSystemAudio
+                ? 'bg-emerald-700 text-white border-emerald-400'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+            }`}
+            title="Capture digital sound output from a browser tab (Teams / Meet / Video) or entire Windows system audio"
+          >
+            <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-100" />
+            <span>{capturingSystemAudio ? 'System Audio Active' : 'Capture System / Tab Audio'}</span>
+          </button>
+
+          {/* Browser Audio Input & Output Device Selector Button */}
+          <button
+            onClick={() => {
+              const next = !showDeviceModal;
+              setShowDeviceModal(next);
+              if (next) loadAudioDevices(true);
+            }}
+            className="px-2.5 sm:px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 sm:gap-2 transition-colors max-w-[200px] sm:max-w-xs cursor-pointer"
+            title={`Mic: ${audioInputName} | Output: ${audioOutputName}`}
           >
             <Radio className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-            <span className="truncate">{audioInputName}</span>
+            <span className="truncate">{capturingSystemAudio ? `Out: ${audioOutputName}` : audioInputName}</span>
             <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
           </button>
 
           {/* Live Volume Meter */}
           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800">
-            <Volume2 className="w-3.5 h-3.5 text-slate-400" />
+            <Volume2 className={`w-3.5 h-3.5 ${isTranscribingChunk ? 'text-indigo-400 animate-pulse' : 'text-slate-400'}`} />
             <div className="w-12 sm:w-16 h-2 bg-slate-800 rounded-full overflow-hidden flex items-center">
               <div
                 className={`h-full transition-all duration-75 ${
@@ -734,8 +855,8 @@ export const LiveInterviewView: React.FC = () => {
                 style={{ width: `${audioVolume}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono tabular-nums text-slate-500 w-5 sm:w-6">
-              {audioVolume}%
+            <span className="text-[10px] font-mono tabular-nums text-slate-400 w-7">
+              {isTranscribingChunk ? 'AI..' : `${audioVolume}%`}
             </span>
           </div>
         </div>
@@ -813,48 +934,89 @@ export const LiveInterviewView: React.FC = () => {
 
       {/* Device Selection Dropdown Modal */}
       {showDeviceModal && (
-        <div className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-col gap-2 shadow-lg">
+        <div className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-col gap-3 shadow-lg">
           <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-            <span>Select Windows Audio Capture Device</span>
-            <button onClick={() => setShowDeviceModal(false)} className="text-slate-500 hover:text-slate-300">
-              Close
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
-            {availableDevices.map((dev) => (
+            <span>Browser Microphone Input & Sound Output Devices</span>
+            <div className="flex items-center gap-3">
               <button
-                key={dev.id}
-                onClick={() => {
-                  setAudioDevice(dev.id, dev.label);
-                  setShowDeviceModal(false);
-                  if (isListening) {
-                    stopRecording();
-                    setTimeout(startRecording, 200);
-                  }
-                }}
-                className={`p-3 rounded-lg text-left text-xs border transition-colors flex items-center justify-between ${
-                  selectedAudioDeviceId === dev.id
-                    ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50'
-                    : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
-                }`}
+                onClick={() => loadAudioDevices(true)}
+                className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 normal-case font-medium cursor-pointer"
               >
-                <span className="truncate">{dev.label}</span>
-                {selectedAudioDeviceId === dev.id && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                <RefreshCw className="w-3 h-3" />
+                <span>Refresh Browser Devices</span>
               </button>
-            ))}
+              <button onClick={() => setShowDeviceModal(false)} className="text-slate-500 hover:text-slate-300 cursor-pointer">
+                Close
+              </button>
+            </div>
           </div>
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] text-slate-400 mt-2 space-y-1">
-            <p className="font-semibold text-emerald-400 flex items-center gap-1.5">
-              <span>🎧 Machine Audio vs Microphone:</span>
-            </p>
-            <p>
-              When listening through a physical webcam microphone, speakers playing audio across the room cause acoustic echo and gibberish transcription.
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-1">
+            {/* Microphone Inputs */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Microphone Input (Selected by Browser)</span>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto">
+                {availableDevices.map((dev) => (
+                  <button
+                    key={dev.id}
+                    onClick={() => {
+                      setAudioDevice(dev.id, dev.label);
+                      if (capturingMic) {
+                        startRecording(dev.id, dev.label);
+                      }
+                    }}
+                    className={`p-2.5 rounded-lg text-left text-xs border transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedAudioDeviceId === dev.id
+                        ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="truncate">{dev.label}</span>
+                    {selectedAudioDeviceId === dev.id && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sound Audio Outputs */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                <Speaker className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Sound Audio Output (Speakers / Headphones)</span>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto">
+                {availableOutputs.map((out) => (
+                  <button
+                    key={out.id}
+                    onClick={() => {
+                      setAudioOutputDevice(out.id, out.label);
+                    }}
+                    className={`p-2.5 rounded-lg text-left text-xs border transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedAudioOutputId === out.id
+                        ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/50'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="truncate">{out.label}</span>
+                    {selectedAudioOutputId === out.id && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
+            <p className="font-semibold text-emerald-400">
+              How to transcribe Browser Sound Output (Teams / Chrome Video) & Microphone:
             </p>
             <p className="text-slate-300">
-              • For 100% digital machine audio: In Windows Sound Settings (<code className="text-indigo-300">mmsys.cpl</code>), enable <strong className="text-white">"Stereo Mix"</strong> and set as default recording device.
+              • To transcribe the other speaker from Teams, Meet, or a browser video playing on <strong className="text-white">{audioOutputName}</strong>, click <strong className="text-emerald-300">"Capture System / Tab Audio"</strong> and check <strong className="text-white">"Also share tab audio"</strong> (or choose Entire Screen + <strong className="text-white">"Also share system audio"</strong>).
             </p>
             <p className="text-slate-300">
-              • In Google Meet / Teams: Turn on <strong className="text-white">Live Captions</strong> (press <kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300 font-mono">c</kbd> in Meet) or use Windows 11 Neural Captions (<kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300 font-mono">Win + Ctrl + L</kbd>). Copy any caption (<kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300 font-mono">Ctrl + C</kbd>) to answer in 0.1s!
+              • Both Microphone Input and System/Tab Sound Output can run simultaneously and transcribe via 16kHz PCM WAV speech capture.
             </p>
           </div>
         </div>

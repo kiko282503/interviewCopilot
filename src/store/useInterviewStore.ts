@@ -5,6 +5,8 @@ interface InterviewState {
   isListening: boolean;
   selectedAudioDeviceId: string;
   audioInputName: string;
+  selectedAudioOutputId: string;
+  audioOutputName: string;
   audioVolume: number;
   transcripts: TranscriptItem[];
   detectedQuestions: DetectedQuestion[];
@@ -20,6 +22,7 @@ interface InterviewState {
   // Actions
   setListening: (listening: boolean) => void;
   setAudioDevice: (id: string, name: string) => void;
+  setAudioOutputDevice: (id: string, name: string) => void;
   setAudioVolume: (vol: number) => void;
   setInterimTranscript: (text: string) => void;
   addTranscriptItem: (item: Omit<TranscriptItem, 'id'>) => void;
@@ -35,7 +38,9 @@ interface InterviewState {
 export const useInterviewStore = create<InterviewState>((set, get) => ({
   isListening: false,
   selectedAudioDeviceId: 'default',
-  audioInputName: 'Default Microphone (Realtek Audio)',
+  audioInputName: 'Browser Default Microphone',
+  selectedAudioOutputId: 'default',
+  audioOutputName: 'Browser Default Output (Speakers)',
   audioVolume: 0,
   transcripts: [],
   detectedQuestions: [],
@@ -54,6 +59,7 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
       activeSessionStartTime: listening ? Date.now() : get().activeSessionStartTime,
     }),
   setAudioDevice: (id, name) => set({ selectedAudioDeviceId: id, audioInputName: name }),
+  setAudioOutputDevice: (id, name) => set({ selectedAudioOutputId: id, audioOutputName: name }),
   setAudioVolume: (vol) => set({ audioVolume: vol }),
   setInterimTranscript: (text) => set({ interimTranscript: text }),
   addTranscriptItem: (item) => {

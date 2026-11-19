@@ -26,6 +26,8 @@ export const DECOY_CONFIGS: Record<DecoyPreset, { title: string; favicon: string
   },
 };
 
+export type StealthBridgeStatus = 'waiting' | 'connected' | 'iframe-blocked' | 'disabled';
+
 interface AppState {
   currentTab: NavigationTab;
   isFloatingMode: boolean;
@@ -41,6 +43,11 @@ interface AppState {
   decoyPreset: DecoyPreset;
   sidebarOpen: boolean;
   isCamouflageMode: boolean;
+  stealthBridgeStatus: StealthBridgeStatus;
+  stealthAudioPeak: { speaker: number; mic: number };
+  stealthAudioErrors: { speakerError: string; micError: string };
+  stealthBridgeError: string;
+  isBraveBrowser: boolean;
   setCurrentTab: (tab: NavigationTab) => void;
   setFloatingMode: (enabled: boolean) => void;
   setAlwaysOnTop: (enabled: boolean) => void;
@@ -55,6 +62,13 @@ interface AppState {
   setNotification: (msg: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setIsBraveBrowser: (isBrave: boolean) => void;
+  setStealthBridgeState: (
+    status: StealthBridgeStatus,
+    peak?: { speaker: number; mic: number },
+    errors?: { speakerError: string; micError: string },
+    bridgeError?: string
+  ) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -64,7 +78,7 @@ export const useAppStore = create<AppState>((set) => ({
   isElectron: typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron,
   theme: 'dark',
   geminiConnected: true,
-  preferredModel: 'gemini-3.8-flash',
+  preferredModel: 'gemini-4-hydrogen',
   activeNotification: null,
   hudOpacity: 95,
   stealthMode: true,
@@ -76,6 +90,11 @@ export const useAppStore = create<AppState>((set) => ({
   isCamouflageMode: typeof window !== 'undefined'
     ? localStorage.getItem('copilot_camouflage') === 'true'
     : false,
+  stealthBridgeStatus: 'waiting',
+  stealthAudioPeak: { speaker: 0, mic: 0 },
+  stealthAudioErrors: { speakerError: '', micError: '' },
+  stealthBridgeError: '',
+  isBraveBrowser: false,
   setCurrentTab: (tab) => set({ currentTab: tab, sidebarOpen: false }),
   setFloatingMode: (enabled) => set({ isFloatingMode: enabled }),
   setAlwaysOnTop: (enabled) => set({ isAlwaysOnTop: enabled }),
@@ -146,4 +165,12 @@ export const useAppStore = create<AppState>((set) => ({
   setNotification: (msg) => set({ activeNotification: msg }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  setIsBraveBrowser: (isBrave) => set({ isBraveBrowser: isBrave }),
+  setStealthBridgeState: (status, peak, errors, bridgeError) =>
+    set((state) => ({
+      stealthBridgeStatus: status,
+      stealthAudioPeak: peak ?? state.stealthAudioPeak,
+      stealthAudioErrors: errors ?? state.stealthAudioErrors,
+      stealthBridgeError: bridgeError !== undefined ? bridgeError : state.stealthBridgeError,
+    })),
 }));
