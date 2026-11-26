@@ -29,6 +29,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+interface ServerStartOptions {
+  port?: number;
+  host?: string;
+  production?: boolean;
+  staticDir?: string;
+}
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -871,8 +878,9 @@ Return simulated standard output, stderr, and execution status.`;
 // -------------------------------------------------------------
 // Vite Dev Server / Static Production Mounting
 // -------------------------------------------------------------
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+export async function startServer(options: ServerStartOptions = {}): Promise<http.Server> {
+  const production = options.production ?? process.env.NODE_ENV === 'production';
+  if (!production) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -880,7 +888,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = options.staticDir ?? path.resolve(__dirname, 'dist');
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
       app.get('*', (_req: Request, res: Response) => {
@@ -1040,12 +1048,29 @@ async function startServer() {
     });
   });
 
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Interview Copilot AI] Server running at http://0.0.0.0:${PORT}`);
+  const port = options.port ?? PORT;
+  const host = options.host ?? '0.0.0.0';
+  await new Promise<void>((resolve, reject) => {
+    const handleError = (error: Error) => reject(error);
+    server.once('error', handleError);
+    server.listen(port, host, () => {
+      server.off('error', handleError);
+      resolve();
+    });
   });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('The local API server did not report a TCP address.');
+  }
+
+  console.log(`[Interview Copilot AI] Server running at http://${address.address}:${address.port}`);
+  return server;
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+if (['server.ts', 'server.js', 'server.mjs', 'server.cjs'].includes(path.basename(process.argv[1] || ''))) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

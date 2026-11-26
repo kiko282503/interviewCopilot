@@ -3,15 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "dist-electron/main.mjs",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.ts",
     "build": "vite build",
+    "build:electron": "node scripts/build-electron.mjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "node -e \"for (const p of ['dist','dist-electron','server.js']) require('node:fs').rmSync(p,{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
-    "dist:win": "npm run build && npx electron-builder --win nsis",
-    "electron:start": "npx electron electron/main.ts"
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win nsis",
+    "dist:win:portable": "npm run build && npm run build:electron && electron-builder --win portable",
+    "electron:start": "npm run build:electron && electron ."
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
@@ -35,14 +38,16 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   }
 }

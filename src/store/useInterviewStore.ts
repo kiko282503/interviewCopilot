@@ -1,5 +1,130 @@
 import { create } from 'zustand';
-import { TranscriptItem, DetectedQuestion, SuggestedAnswer, ResponseLength } from '../types';
+import type {
+  DetectedQuestion,
+  InterviewSessionHistory,
+  ResponseLength,
+  SuggestedAnswer,
+  TranscriptItem,
+} from '../types';
+
+const SESSION_HISTORY_STORAGE_KEY = 'interview-copilot-session-history-v1';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isTranscriptItem(value: unknown): value is TranscriptItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.timestamp === 'string' &&
+    (value.speaker === 'interviewer' || value.speaker === 'candidate') &&
+    typeof value.text === 'string' &&
+    (value.isQuestion === undefined || typeof value.isQuestion === 'boolean')
+  );
+}
+
+function isQuestionCategory(value: unknown): boolean {
+  return [
+    'general',
+    'qa_technical',
+    'automation',
+    'programming',
+    'database',
+    'api_testing',
+    'behavioral',
+    'scenario',
+  ].some((category) => category === value);
+}
+
+function isDetectedQuestion(value: unknown): value is DetectedQuestion {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.timestamp === 'string' &&
+    typeof value.text === 'string' &&
+    isQuestionCategory(value.category) &&
+    typeof value.confidence === 'number' &&
+    Number.isFinite(value.confidence) &&
+    (value.urgency === 'high' || value.urgency === 'normal') &&
+    (value.suggestedAnswer === undefined || isSuggestedAnswer(value.suggestedAnswer))
+  );
+}
+
+function isStarMethod(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.situation === 'string' &&
+    typeof value.task === 'string' &&
+    typeof value.action === 'string' &&
+    typeof value.result === 'string'
+  );
+}
+
+function isSuggestedAnswer(value: unknown): value is SuggestedAnswer {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.questionId === 'string' &&
+    typeof value.questionText === 'string' &&
+    isQuestionCategory(value.category) &&
+    (value.length === 'short' || value.length === 'standard' || value.length === 'detailed') &&
+    typeof value.answer === 'string' &&
+    Array.isArray(value.keyPoints) &&
+    value.keyPoints.every((item) => typeof item === 'string') &&
+    Array.isArray(value.followUpPredictions) &&
+    value.followUpPredictions.every((item) => typeof item === 'string') &&
+    typeof value.timestamp === 'string' &&
+    (value.codeSnippet === undefined || typeof value.codeSnippet === 'string') &&
+    (value.starMethod === undefined || isStarMethod(value.starMethod))
+  );
+}
+
+function isInterviewSessionHistory(value: unknown): value is InterviewSessionHistory {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.date === 'string' &&
+    !Number.isNaN(Date.parse(value.date)) &&
+    typeof value.jobPosition === 'string' &&
+    typeof value.company === 'string' &&
+    typeof value.interviewType === 'string' &&
+    typeof value.durationMinutes === 'number' &&
+    Number.isFinite(value.durationMinutes) &&
+    value.durationMinutes >= 0 &&
+    Array.isArray(value.transcripts) &&
+    value.transcripts.every(isTranscriptItem) &&
+    Array.isArray(value.detectedQuestions) &&
+    value.detectedQuestions.every(isDetectedQuestion) &&
+    Array.isArray(value.answers) &&
+    value.answers.every(isSuggestedAnswer) &&
+    typeof value.notes === 'string'
+  );
+}
+
+function loadSessionHistory(): {
+  sessions: InterviewSessionHistory[];
+  error: string | null;
+} {
+  if (typeof window === 'undefined') {
+    return { sessions: [], error: null };
+  }
+
+  try {
+    const saved = window.localStorage.getItem(SESSION_HISTORY_STORAGE_KEY);
+    if (!saved) return { sessions: [], error: null };
+
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed) || !parsed.every(isInterviewSessionHistory)) {
+      return { sessions: [], error: 'Saved session history is invalid and could not be loaded.' };
+    }
+
+    return { sessions: parsed, error: null };
+  } catch (error) {
+    const detail = error instanceof Error ? ` ${error.message}` : '';
+    return { sessions: [], error: `Could not load saved session history.${detail}` };
+  }
+}
 
 interface InterviewState {
   isListening: boolean;
@@ -18,6 +143,9 @@ interface InterviewState {
   isDetectingQuestion: boolean;
   interimTranscript: string;
   activeSessionStartTime: number | null;
+  sessionFinalized: boolean;
+  completedSessions: InterviewSessionHistory[];
+  sessionHistoryError: string | null;
   
   // Actions
   setListening: (listening: boolean) => void;
@@ -35,6 +163,8 @@ interface InterviewState {
   loadDemoData: () => void;
 }
 
+const savedHistory = loadSessionHistory();
+
 export const useInterviewStore = create<InterviewState>((set, get) => ({
   isListening: false,
   selectedAudioDeviceId: 'default',
@@ -51,13 +181,82 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
   isGeneratingAnswer: false,
   isDetectingQuestion: false,
   interimTranscript: '',
-  activeSessionStartTime: Date.now(),
+  activeSessionStartTime: null,
+  sessionFinalized: false,
+  completedSessions: savedHistory.sessions,
+  sessionHistoryError: savedHistory.error,
 
-  setListening: (listening) =>
+  setListening: (listening) => {
+    const state = get();
+    if (listening) {
+      if (state.isListening) return;
+      set({
+        isListening: true,
+        activeSessionStartTime: state.activeSessionStartTime ?? Date.now(),
+        sessionFinalized: false,
+        ...(state.sessionFinalized
+          ? {
+              transcripts: [],
+              detectedQuestions: [],
+              activeAnswer: null,
+              answerHistory: [],
+              interimTranscript: '',
+            }
+          : {}),
+      });
+      return;
+    }
+
+    if (!state.isListening) return;
+
+    const hasContent =
+      state.transcripts.length > 0 ||
+      state.detectedQuestions.length > 0 ||
+      state.answerHistory.length > 0;
+    let completedSessions = state.completedSessions;
+    let sessionHistoryError = state.sessionHistoryError;
+
+    if (state.activeSessionStartTime !== null && hasContent) {
+      const session: InterviewSessionHistory = {
+        id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        date: new Date(state.activeSessionStartTime).toISOString(),
+        jobPosition: 'Live session',
+        company: '',
+        interviewType: 'Live interview',
+        durationMinutes: Math.max(
+          1,
+          Math.round((Date.now() - state.activeSessionStartTime) / 60000)
+        ),
+        transcripts: state.transcripts,
+        detectedQuestions: state.detectedQuestions,
+        answers: state.answerHistory,
+        notes: '',
+      };
+      completedSessions = [session, ...state.completedSessions];
+
+      try {
+        if (typeof window === 'undefined') {
+          throw new Error('Persistent browser storage is unavailable.');
+        }
+        window.localStorage.setItem(
+          SESSION_HISTORY_STORAGE_KEY,
+          JSON.stringify(completedSessions)
+        );
+        sessionHistoryError = null;
+      } catch (error) {
+        const detail = error instanceof Error ? ` ${error.message}` : '';
+        sessionHistoryError = `Session was saved for this run but could not be written to local storage.${detail}`;
+      }
+    }
+
     set({
-      isListening: listening,
-      activeSessionStartTime: listening ? Date.now() : get().activeSessionStartTime,
-    }),
+      isListening: false,
+      activeSessionStartTime: null,
+      sessionFinalized: true,
+      completedSessions,
+      sessionHistoryError,
+    });
+  },
   setAudioDevice: (id, name) => set({ selectedAudioDeviceId: id, audioInputName: name }),
   setAudioOutputDevice: (id, name) => set({ selectedAudioOutputId: id, audioOutputName: name }),
   setAudioVolume: (vol) => set({ audioVolume: vol }),
@@ -95,7 +294,8 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
       detectedQuestions: [],
       activeAnswer: null,
       interimTranscript: '',
-      activeSessionStartTime: Date.now(),
+      activeSessionStartTime: get().isListening ? Date.now() : null,
+      sessionFinalized: false,
     }),
   loadDemoData: () =>
     set({

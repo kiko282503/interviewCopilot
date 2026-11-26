@@ -12,4 +12,5 @@
 - **Floating Copilot HUD**: Compact overlay mode optimized for placement alongside meeting windows (Teams, Zoom, Google Meet).
 - **Practice Mode**: Interactive mock interview simulator with automated evaluation scoring and actionable feedback.
 - **Knowledge Library & History**: Curated QA questions library, session history, and Markdown transcript export.
-- **Windows Packaging**: Electron Builder configuration with NSIS installer setup for Windows 11.
+- **Local Session Archive**: Completed live sessions now persist on-device with searchable transcripts, detected questions, suggested answers, and Markdown export.
+- **Windows Packaging**: Electron Builder targets for an NSIS installer and portable Windows executable. The Electron main process starts the local API server before opening the desktop UI.

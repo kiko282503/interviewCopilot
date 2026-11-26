@@ -45,9 +45,10 @@
 
 - [x] **PHASE 9: Interview Practice & History**
   - Mock interview simulator with customizable role, difficulty, and automated rubric scoring
-  - Session history storage, search, filter, and Markdown/text export
+  - On-device persistence for completed live sessions, searchable transcripts, detected questions, suggested answers, and Markdown export
   - Curated QA Automation Q&A knowledge base
 
 - [x] **PHASE 10 & 11: Packaging & Windows Distribution**
-  - Electron builder configuration for Windows 11 NSIS standalone installer
-  - Production build and test verification
+  - Electron main process starts and stops the local API server with the desktop app
+  - Windows NSIS installer and portable executable build targets
+  - Production renderer and Electron bundles build successfully

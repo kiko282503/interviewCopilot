@@ -1,12 +1,15 @@
 import { app, BrowserWindow, ipcMain, screen, desktopCapturer, dialog, globalShortcut, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { startServer } from '../server.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let copilotWindow: BrowserWindow | null = null;
+let backendServer: Awaited<ReturnType<typeof startServer>> | null = null;
+let backendUrl = '';
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -18,7 +21,7 @@ function createMainWindow() {
     title: 'Settings',
     frame: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -29,9 +32,11 @@ function createMainWindow() {
     mainWindow.setContentProtection(true);
   } catch {}
 
-  const devUrl = 'http://localhost:3000';
-  mainWindow.loadURL(devUrl).catch(() => {
-    mainWindow?.loadFile(path.join(__dirname, '../dist/index.html'));
+  mainWindow.loadURL(backendUrl).catch((error) => {
+    console.error('Failed to load the Interview Copilot window:', error);
+    if (!mainWindow?.isDestroyed()) {
+      dialog.showErrorBox('Interview Copilot failed to load', error.message);
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -58,7 +63,7 @@ function createCopilotFloatingWindow() {
     title: 'Settings', // Decoy title
     backgroundColor: '#090d16',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -71,8 +76,11 @@ function createCopilotFloatingWindow() {
     console.warn('Content protection not supported in this environment');
   }
 
-  copilotWindow.loadURL('http://localhost:3000?mode=floating').catch(() => {
-    copilotWindow?.loadFile(path.join(__dirname, '../dist/index.html'), { query: { mode: 'floating' } });
+  copilotWindow.loadURL(`${backendUrl}/?mode=floating`).catch((error) => {
+    console.error('Failed to load the floating copilot window:', error);
+    if (!copilotWindow?.isDestroyed()) {
+      dialog.showErrorBox('Floating Copilot failed to load', error.message);
+    }
   });
 
   copilotWindow.on('closed', () => {
@@ -80,7 +88,19 @@ function createCopilotFloatingWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  backendServer = await startServer({
+    port: 0,
+    host: '127.0.0.1',
+    production: app.isPackaged,
+    staticDir: path.resolve(__dirname, '../dist'),
+  });
+  const address = backendServer.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('The local API server did not report a TCP address.');
+  }
+  backendUrl = `http://127.0.0.1:${address.port}`;
+
   // Silent system-audio loopback handler (Parakeet-style zero-picker audio capture inside Electron)
   try {
     if (session?.defaultSession?.setDisplayMediaRequestHandler) {
@@ -233,6 +253,13 @@ app.whenReady().then(() => {
       createMainWindow();
     }
   });
+}).catch((error) => {
+  console.error('Failed to start Interview Copilot:', error);
+  dialog.showErrorBox(
+    'Interview Copilot failed to start',
+    error instanceof Error ? error.message : String(error)
+  );
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
@@ -243,4 +270,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  backendServer?.close();
 });
